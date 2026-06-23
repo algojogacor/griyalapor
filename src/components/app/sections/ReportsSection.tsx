@@ -58,6 +58,7 @@ interface Txn {
   fee_per_unit: number
   total: number          // pendapatan bersih (admin)
   bill_per_unit: number
+  total_paid: number
   note: string | null
   category_name: string
   category_group: string | null
@@ -123,8 +124,8 @@ export function ReportsSection() {
   const expenses = expData?.expenses ?? []
 
   const totalAdmin = useMemo(() => txns.reduce((s, t) => s + t.total, 0), [txns]) // pendapatan bersih (fee admin)
-  const totalOmzet = useMemo(() => txns.reduce((s, t) => s + t.qty * (t.bill_per_unit + t.fee_per_unit), 0), [txns]) // pendapatan kotor (uang pembeli)
-  const hasOmzet = useMemo(() => txns.some((t) => t.bill_per_unit > 0), [txns])
+  const totalOmzet = useMemo(() => txns.reduce((s, t) => s + t.total_paid, 0), [txns]) // pendapatan kotor (total uang pembeli)
+  const hasOmzet = useMemo(() => txns.some((t) => t.total_paid > 0), [txns])
   const txCount = txns.length
   const totalExpenses = useMemo(
     () => expenses.reduce((s, e) => s + e.amount, 0),
@@ -152,7 +153,7 @@ export function ReportsSection() {
       e.count += 1
       e.qty += t.qty
       e.admin += t.total
-      e.omzet += t.qty * (t.bill_per_unit + t.fee_per_unit)
+      e.omzet += t.total_paid
       map.set(key, e)
     }
     return Array.from(map.values()).sort((a, b) => b.admin - a.admin)
@@ -556,12 +557,12 @@ function buildPrintHTML(opts: {
   const txRows = txns
     .map(
       (t) => {
-        const omzet = t.qty * (t.bill_per_unit + t.fee_per_unit)
+        const omzet = t.total_paid
         const omzetCell = hasOmzet
-          ? `<td style="text-align:right">${t.bill_per_unit > 0 ? fmt(omzet) : '—'}</td>`
+          ? `<td style="text-align:right">${t.total_paid > 0 ? fmt(omzet) : '—'}</td>`
           : ''
         const billCell = hasOmzet
-          ? `<td style="text-align:right">${t.bill_per_unit > 0 ? fmt(t.bill_per_unit) : '—'}</td>`
+          ? `<td style="text-align:right">${t.total_paid > 0 ? fmt(omzet) : '—'}</td>`
           : ''
         return `
       <tr>

@@ -228,3 +228,49 @@ Stage Summary:
 - Install Prompt hanya muncul di browser yang support beforeinstallprompt (Chrome/Edge/Android). Safari iOS butuh instruksi manual "Add to Home Screen" — bisa tambah info card khusus iOS.
 - Bisa tambah: recurring expenses, filter kategori di laporan, data backup/restore JSON, search transaksi by amount range, dark mode refinement.
 - Mobile bottom-nav 6-slot saat expenses on masih agak rapat — pertimbangkan "More" menu.
+
+---
+Task ID: 10
+Agent: main (orchestrator) — user clarification
+Task: Perbaikan model omzet sesuai sistem GriyaBayar — ganti bill_per_unit (per-pelanggan) → total_paid (total uang pembeli)
+
+Work Log:
+- Klarifikasi user: di sistem GriyaBayar, tiap IDPEL nominalnya BEDA-BEDA. User mau input TOTAL uang dari pembeli (bukan per-pelanggan). Fee admin SUDAH INCLUDE di total itu. Contoh: 30 IDPEL, total 14 juta → bersih=30×3k=90k, omzet=14 juta.
+- Sebelumnya: pakai bill_per_unit (nominal per pelanggan, asumsi sama semua) → omzet = qty×(bill+fee). Tidak realistis karena tiap pelanggan beda.
+- Migration: ALTER TABLE transactions ADD COLUMN total_paid INTEGER NOT NULL DEFAULT 0. UPDATE data lama: SET total_paid = qty*(bill_per_unit+fee_per_unit) WHERE bill_per_unit>0 AND total_paid=0 (1 baris dimigrate). Kolom bill_per_unit tetap untuk kompatibilitas tapi deprecated.
+- Update schema.sql: dokumentasi total_paid = OMZET (fee include), bill_per_unit deprecated.
+- API transactions POST: terima total_paid. GET: kembalikan total_paid. PATCH [id]: terima total_paid.
+- API summary: omzet = SUM(total_paid) (bukan lagi qty×(bill+fee)). Breakdown & monthlyTrend sama.
+- API export CSV: kolom Tanggal,Kategori,Grup,Jumlah,Fee/Unit,Pendapatan Bersih,Omzet,Catatan. (kolom Tagihan/Unit dihilangkan).
+- API import: terima total_paid di row.
+- Form Transaksi: field "Nominal Tagihan per Pelanggan (opsional)" → "Total Dibayar Pembeli / Omzet (opsional)". Helper text: "Total seluruh uang dari pembeli (sudah termasuk fee). Tiap pelanggan beda nominal, jadi dijumlahkan. Boleh dikosongkan". Preview: Pendapatan Bersih (qty×fee) + Omzet (total_paid langsung).
+- EditTransactionDialog: field sama, ganti bill → total_paid.
+- QuickAddDialog: field "Tagihan/Pelanggan (opsional)" → "Total Dibayar Pembeli (opsional)".
+- TransactionList: omzet per baris = t.total_paid (bukan dihitung). grandOmzet = SUM(total_paid).
+- Dashboard: Summary interface hapus field bill, omzet dari total_paid. recentTransactions pakai total_paid.
+- Reports: Txn interface tambah total_paid. totalOmzet = SUM(total_paid). breakdown omzet = SUM(total_paid). Export PDF: omzet = t.total_paid.
+- Import: field 'bill' → 'total_paid', label "Total Dibayar Pembeli (Omzet)", detect header "total.*dibayar|omzet|total_paid|uang.*masuk". Sample CSV: kolom "Total Dibayar" = 14000000. Preview table: hapus kolom Tagihan, kolom Omzet = totalPaid.
+- AI Agent system prompt DITULIS ULANG: "Omzet = total uang yang masuk dari pembeli = total_paid (diinput user langsung, karena tiap pelanggan nominalnya beda-beda)". Contoh eksplisit: "30 idpel PLN admin 3000, total 14 juta → qty=30, fee_per_unit=3000, total_paid=14000000. Bersih=90.000, Omzet=14.000.000".
+- AI tool get_transactions: return total_paid (bukan bill_per_unit). get_summary: omzet = SUM(total_paid). propose_action: payload create_transaction dukung total_paid. Eksekusi: simpan total_paid.
+- AgentChat ActionRow: omzetInfo pakai total_paid.
+
+VERIFIKASI agent-browser:
+- Form: pilih PLN Pascabayar, qty=30, fee=3.000 (auto), Total Dibayar=14.000.000 → preview "Pendapatan Bersih Rp90.000" + "Omzet Rp14.000.000" → Simpan sukses, list tampilkan "Omzet Rp14.000.000 +Rp90.000" ✓
+- AI "Rekap hari ini dong" → jawab: "Pendapatan Bersih Rp215.000 (4 transaksi) • Omzet Rp16.030.000 (uang dari pelanggan) • Pengeluaran Operasional Rp20.000 • Laba Operasional Rp195.000" + Rincian "30 × Rp3.000 = Rp90.000 (uang pelanggan: Rp14.000.000)" ✓ — SAMA PERSIS dengan contoh user.
+- Dashboard: Omzet Rp2.030.000 (data lama termigrasi) + transaksi baru ✓
+- bun run lint PASS ✓
+
+Stage Summary:
+- Model bisnis PPOB sekarang SESUAI sistem GriyaBayar: user input qty + fee (auto dari kategori) + total uang dari pembeli (omzet). Sistem hitung bersih = qty×fee otomatis. Omzet = total_paid langsung.
+- Field "Nominal Tagihan per Pelanggan" (asumsi nominal sama) diganti "Total Dibayar Pembeli" (realistis, tiap pelanggan beda nominal dijumlahkan user).
+- Fee admin sudah include di total_paid (sesuai GriyaBayar), bukan ditambah di luar.
+- AI agent paham model baru, jawaban rekap akurat & sesuai ekspektasi user.
+
+## Status Proyek
+- STABIL & model bisnis final sesuai sistem GriyaBayar. Lint PASS, terverifikasi end-to-end.
+
+## Risiko / Saran next
+- Kolom bill_per_unit masih ada di DB (deprecated, semua nilai 0 setelah migrate). Bisa drop kolom kalau ingin bersih, tapi low-risk dibiarkan.
+- Transaksi lama yang tidak punya total_paid (data test) akan tampil omzet=0 / omzet=bersih. Expected.
+- Bisa tambah: input "uang diteruskan ke penyedia" = total_paid - (qty×fee) sebagai info turunan (opsional).
+- Bisa tambah validasi: total_paid harus >= qty×fee (omzet minimal = bersih, karena fee include).

@@ -26,8 +26,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (body.fee_per_unit !== undefined) {
     fields.push('fee_per_unit = ?'); args.push(Math.max(0, Math.floor(Number(body.fee_per_unit) || 0)))
   }
-  if (body.bill_per_unit !== undefined) {
-    fields.push('bill_per_unit = ?'); args.push(Math.max(0, Math.floor(Number(body.bill_per_unit) || 0)))
+  if (body.total_paid !== undefined) {
+    fields.push('total_paid = ?'); args.push(Math.max(0, Math.floor(Number(body.total_paid) || 0)))
   }
   if (body.note !== undefined) {
     fields.push('note = ?'); args.push(body.note ? String(body.note).trim().slice(0, 200) : null)

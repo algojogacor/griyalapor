@@ -39,7 +39,7 @@ import {
 import { cn } from '@/lib/utils'
 
 // ---------- Tipe ----------
-type Field = 'date' | 'category' | 'group' | 'qty' | 'fee' | 'bill' | 'note'
+type Field = 'date' | 'category' | 'group' | 'qty' | 'fee' | 'total_paid' | 'note'
 type DateFormat = 'YYYY-MM-DD' | 'DD/MM/YYYY' | 'DD-MM-YYYY'
 
 interface ImportResult {
@@ -54,7 +54,7 @@ const FIELD_LABELS: Record<Field, string> = {
   group: 'Grup',
   qty: 'Jumlah (qty)',
   fee: 'Fee per Unit',
-  bill: 'Nominal Tagihan/Unit',
+  total_paid: 'Total Dibayar Pembeli (Omzet)',
   note: 'Catatan',
 }
 
@@ -64,7 +64,7 @@ const FIELD_REQUIRED: Record<Field, boolean> = {
   group: false,
   qty: true,
   fee: false,
-  bill: false,
+  total_paid: false,
   note: false,
 }
 
@@ -74,7 +74,7 @@ const FIELD_HINTS: Record<Field, string> = {
   group: 'Opsional. Contoh: Listrik, Air',
   qty: 'Jumlah pelanggan/IDPEL',
   fee: 'Biaya admin per unit (Rp). Kosongkan = 0',
-  bill: 'Nominal tagihan per pelanggan (Rp). Opsional, untuk hitung omzet',
+  total_paid: 'Total uang dari pembeli = Omzet (Rp). Opsional',
   note: 'Opsional',
 }
 
@@ -89,7 +89,7 @@ function detectHeaderField(header: string): Field | null {
   if (/grup|group/.test(h)) return 'group'
   if (/jumlah|qty|pelanggan|idpel|quantity/.test(h)) return 'qty'
   if (/fee|admin/.test(h)) return 'fee'
-  if (/tagihan|bill|nominal|nilai/.test(h)) return 'bill'
+  if (/total.*dibayar|total.*bayar|omzet|total_paid|uang.*masuk/.test(h)) return 'total_paid'
   if (/catatan|note|ket/.test(h)) return 'note'
   return null
 }
@@ -227,8 +227,8 @@ export function ImportSection() {
 
   function downloadSample() {
     const csv =
-      'Tanggal,Kategori,Grup,Jumlah,Fee,Tagihan,Catatan\n' +
-      '23/06/2026,PLN,Listrik,49,3000,200000,Shift pagi\n' +
+      'Tanggal,Kategori,Grup,Jumlah,Fee,Total Dibayar,Catatan\n' +
+      '23/06/2026,PLN,Listrik,49,3000,14000000,Shift pagi\n' +
       '23/06/2026,BPJS,Kesehatan,12,2500,,\n'
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
     const url = URL.createObjectURL(blob)
@@ -252,9 +252,9 @@ export function ImportSection() {
       const group = mapping.group ? (r[mapping.group] ?? '').trim() : ''
       const qty = mapping.qty ? normalizeInt(r[mapping.qty] ?? '') : 0
       const fee = mapping.fee ? normalizeInt(r[mapping.fee] ?? '') : 0
-      const bill = mapping.bill ? normalizeInt(r[mapping.bill] ?? '') : 0
+      const totalPaid = mapping.total_paid ? normalizeInt(r[mapping.total_paid] ?? '') : 0
       const note = mapping.note ? (r[mapping.note] ?? '').trim() : ''
-      return { date, category, group, qty, fee, bill, bersih: qty * fee, omzet: qty * (bill + fee), note }
+      return { date, category, group, qty, fee, totalPaid, bersih: qty * fee, omzet: totalPaid, note }
     })
   }, [step, rawRows, mapping, dateFormat])
 
@@ -276,7 +276,7 @@ export function ImportSection() {
         group: string | null
         qty: number
         fee_per_unit: number
-        bill_per_unit: number
+        total_paid: number
         note: string | null
       }[]
       createMissing: boolean
@@ -321,7 +321,7 @@ export function ImportSection() {
       const group = mapping.group ? (r[mapping.group] ?? '').trim() : null
       const qty = mapping.qty ? normalizeInt(r[mapping.qty] ?? '') : 0
       const fee = mapping.fee ? normalizeInt(r[mapping.fee] ?? '') : 0
-      const bill = mapping.bill ? normalizeInt(r[mapping.bill] ?? '') : 0
+      const totalPaid = mapping.total_paid ? normalizeInt(r[mapping.total_paid] ?? '') : 0
       const note = mapping.note ? (r[mapping.note] ?? '').trim() : null
       return {
         date: normalizeDate(dateRaw, dateFormat),
@@ -329,7 +329,7 @@ export function ImportSection() {
         group: group || null,
         qty,
         fee_per_unit: fee,
-        bill_per_unit: bill,
+        total_paid: totalPaid,
         note: note || null,
       }
     })
@@ -502,7 +502,7 @@ export function ImportSection() {
             </div>
             <p className="text-muted-foreground mt-2 text-xs">
               Sinonim yang dikenali: Tanggal → Date/Tgl, Kategori →
-              Jenis/Layanan, Jumlah → Qty/IDPEL, Fee → Admin, Tagihan → Bill/Nominal, Catatan → Note/Ket,
+              Jenis/Layanan, Jumlah → Qty/IDPEL, Fee → Admin, Total Dibayar → Omzet/Uang Masuk, Catatan → Note/Ket,
               Grup → Group.
             </p>
           </div>
@@ -540,7 +540,7 @@ export function ImportSection() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {(
-                ['date', 'category', 'group', 'qty', 'fee', 'bill', 'note'] as Field[]
+                ['date', 'category', 'group', 'qty', 'fee', 'total_paid', 'note'] as Field[]
               ).map((f) => (
                 <div key={f} className="space-y-1.5">
                   <Label className="text-sm font-medium flex items-center gap-1.5">
@@ -624,7 +624,7 @@ export function ImportSection() {
           <Card className="p-5">
             <h2 className="font-bold text-lg mb-1">Pratinjau Data</h2>
             <p className="text-sm text-muted-foreground mb-3">
-              8 baris pertama · Bersih = Jumlah × Fee · Omzet = Jumlah × (Tagihan + Fee)
+              8 baris pertama · Bersih = Jumlah × Fee · Omzet = Total Dibayar Pembeli
             </p>
             <div className="overflow-x-auto">
               <Table>
@@ -635,7 +635,6 @@ export function ImportSection() {
                     <TableHead className="hidden sm:table-cell">Grup</TableHead>
                     <TableHead className="text-right">Qty</TableHead>
                     <TableHead className="text-right">Fee</TableHead>
-                    <TableHead className="text-right hidden md:table-cell">Tagihan</TableHead>
                     <TableHead className="text-right">Bersih</TableHead>
                     <TableHead className="text-right hidden md:table-cell">Omzet</TableHead>
                     <TableHead className="hidden md:table-cell">Catatan</TableHead>
@@ -665,14 +664,11 @@ export function ImportSection() {
                       <TableCell className="text-right tabular-nums">
                         {formatRupiah(r.fee)}
                       </TableCell>
-                      <TableCell className="text-right tabular-nums hidden md:table-cell text-muted-foreground">
-                        {r.bill > 0 ? formatRupiah(r.bill) : '—'}
-                      </TableCell>
                       <TableCell className="text-right tabular-nums font-semibold text-success">
                         {formatRupiah(r.bersih)}
                       </TableCell>
                       <TableCell className="text-right tabular-nums hidden md:table-cell text-muted-foreground">
-                        {r.bill > 0 ? formatRupiah(r.omzet) : '—'}
+                        {r.totalPaid > 0 ? formatRupiah(r.omzet) : '—'}
                       </TableCell>
                       <TableCell className="hidden md:table-cell text-muted-foreground text-xs">
                         {r.note || '—'}
@@ -682,7 +678,7 @@ export function ImportSection() {
                   {previewRows.length === 0 && (
                     <TableRow>
                       <TableCell
-                        colSpan={9}
+                        colSpan={8}
                         className="text-center text-muted-foreground py-6"
                       >
                         Tidak ada baris untuk dipratinjau.

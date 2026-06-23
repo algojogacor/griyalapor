@@ -15,8 +15,9 @@ CREATE TABLE IF NOT EXISTS transactions (
   date TEXT NOT NULL,
   qty INTEGER NOT NULL,
   fee_per_unit INTEGER NOT NULL,
-  total INTEGER NOT NULL,             -- qty * fee_per_unit  (PENDAPATAN BERSIH / fee admin)
-  bill_per_unit INTEGER NOT NULL DEFAULT 0,  -- nominal tagihan per pelanggan (untuk hitung omzet)
+  total INTEGER NOT NULL,             -- qty * fee_per_unit  (PENDAPATAN BERSIH / fee admin yang didapat)
+  total_paid INTEGER NOT NULL DEFAULT 0,  -- total uang dari pembeli = OMZET (fee sudah include)
+  bill_per_unit INTEGER NOT NULL DEFAULT 0,  -- (deprecated, kompatibilitas lama)
   note TEXT,
   created_at TEXT DEFAULT (datetime('now'))
 );

@@ -85,7 +85,7 @@ const TOOLS: MistralTool[] = [
                   type: 'object',
                   description:
                     'create_category: {name, group?, default_fee}. ' +
-                    'create_transaction: {category_name atau category_id, date(YYYY-MM-DD), qty, fee_per_unit, bill_per_unit?(nominal tagihan/pelanggan, 0 jika tidak disebut), note?}. ' +
+                    'create_transaction: {category_name atau category_id, date(YYYY-MM-DD), qty, fee_per_unit, total_paid?(total uang dari pembeli = omzet, 0 jika tidak disebut), note?}. ' +
                     'update_category_fee: {category_name atau category_id, new_fee}.',
                 },
               },
@@ -105,11 +105,12 @@ function systemPrompt(): string {
   return `Kamu adalah Asisten AI GriyaLapor, asisten keuangan untuk usaha PPOB (Pembayaran Pos Online: PLN, PDAM, BPJS, pulsa, dll) milik keluarga. Penggunanya orang lanjut usia.
 
 MODEL BISNIS PPOB (WAJIB dipahami):
-- Pelanggan bayar TAGIHAN + FEE ADMIN ke agen. Agen meneruskan tagihan ke penyedia, dan KEEP FEE ADMIN sebagai pendapatan.
-- "Pendapatan Bersih" = fee admin = qty × fee_per_unit. INI METRIK UTAMA, yang paling penting.
-- "Pendapatan Kotor" / "Omzet" = total uang dari pembeli = qty × (nominal_tagihan + fee). Hanya bisa dihitung kalau nominal tagihan ikut dicatat.
-- "Pengeluaran Operasional" = biaya operasional (bensin, listrik tempat, dll). Ini HAL TERPISAH, BUKAN pengurang dari pendapatan bersih. Jangan pernah bilang "pendapatan bersih = kotor - pengeluaran". Yang benar: Laba Operasional = Pendapatan Bersih - Pengeluaran.
-- Jadi kalau user tanya "pendapatan" tanpa keterangan, jawab dengan PENDAPATAN BERSIH (fee admin). Jangan pakai istilah "kotor" kecuali user spesifik tanya omzet/uang pembeli.
+- Pelanggan bayar TOTAL UANG ke agen (total ini SUDAH termasuk fee admin, sistem GriyaBayar). Agen meneruskan tagihan ke penyedia, dan KEEP FEE ADMIN sebagai pendapatan.
+- "Pendapatan Bersih" (biaya admin/fee) = qty × fee_per_unit. INI YANG DIDAPAT AGEN, metrik utama.
+- "Omzet" = total uang yang masuk dari pembeli = total_paid (diinput user langsung, karena tiap pelanggan nominalnya beda-beda). Bisa 0 kalau user tidak catat.
+- "Pengeluaran Operasional" = biaya operasional (bensin, listrik tempat, dll). HAL TERPISAH, BUKAN pengurang omzet. Laba Operasional = Pendapatan Bersih - Pengeluaran.
+- Kalau user tanya "pendapatan" tanpa keterangan, jawab PENDAPATAN BERSIH (fee admin). Jangan pakai "kotor" kecuali user spesifik tanya omzet/uang pembeli.
+- Contoh: user "30 idpel PLN admin 3000, total 14 juta" → qty=30, fee_per_unit=3000, total_paid=14000000. Bersih=90.000, Omzet=14.000.000.
 
 GAYA BAHASA:
 - Bahasa Indonesia, ramah, singkat, to-the-point. Satu halusun per topik.
@@ -126,7 +127,7 @@ ATURAN AKSI:
 3. Untuk pertanyaan data, pakai tool get_categories / get_transactions / get_summary. Jawab angka konkret + format rupiah (Rp147.000).
 4. Kalau kategori yang disebut user belum ada, usulkan buat kategori dulu (tebak grup & fee default masuk akal) lalu catat transaksinya dalam SATU proposal.
 5. "adminnya 3000" / "fee 3000" = fee per unit (rupiah).
-6. Kalau user sebut nominal tagihan (mis. "tagihannya 200 ribu"), sertakan bill_per_unit di payload transaksi. Kalau tidak disebut, biarkan bill_per_unit = 0.
+6. Kalau user sebut total uang dari pembeli (mis. "total 14 juta", "uang masuk 2 juta"), sertakan total_paid di payload transaksi = omzet. Kalau tidak disebut, biarkan total_paid = 0.
 7. Jangan mengarang data. Kalau ragu (mis. kategori ambigu), tanya klarifikasi singkat.
 8. Format uang selalu Rp + titik ribuan. Contoh: Rp1.234.000.
 9. Untuk rekap: ambil data via get_summary/get_transactions, rangkum dengan poin ringkas. Utamakan pendapatan bersih. Sebut omzet hanya kalau ada datanya, dan pengeluaran hanya kalau ada.`
@@ -151,17 +152,16 @@ async function executeReadTool(name: string, args: Record<string, unknown>): Pro
     if (to) { cond.push('t.date <= ?'); a.push(to) }
     const where = cond.length ? 'WHERE ' + cond.join(' AND ') : ''
     const res = await db.execute({
-      sql: `SELECT t.id, t.date, t.qty, t.fee_per_unit, t.total, t.bill_per_unit, t.note, c.name as category_name
+      sql: `SELECT t.id, t.date, t.qty, t.fee_per_unit, t.total, t.total_paid, t.note, c.name as category_name
             FROM transactions t JOIN categories c ON c.id = t.category_id ${where} ORDER BY t.date DESC, t.id DESC LIMIT 50`,
       args: a,
     })
     const rows = res.rows.map((r) => {
-      const x = r as { id: number; date: string; qty: number; fee_per_unit: number; total: number; bill_per_unit: number; note: string | null; category_name: string }
+      const x = r as { id: number; date: string; qty: number; fee_per_unit: number; total: number; total_paid: number; note: string | null; category_name: string }
       return {
         id: x.id, date: x.date, category: x.category_name, qty: x.qty, fee_per_unit: x.fee_per_unit,
-        pendapatan_bersih: x.total, // fee admin
-        bill_per_unit: x.bill_per_unit, // nominal tagihan per pelanggan (0 jika tidak dicatat)
-        omzet: x.qty * (x.bill_per_unit + x.fee_per_unit), // total uang pembeli
+        pendapatan_bersih: x.total, // fee admin yang didapat
+        total_paid: x.total_paid,   // total uang dari pembeli = omzet (0 jika tidak dicatat)
         note: x.note,
       }
     })
@@ -172,7 +172,7 @@ async function executeReadTool(name: string, args: Record<string, unknown>): Pro
     const range = period === 'today' ? { from: todayISO(), to: todayISO() } : period === 'week' ? thisWeekRange() : thisMonthRange()
     const [t, e] = await Promise.all([
       db.execute({
-        sql: 'SELECT COUNT(*) as c, COALESCE(SUM(total),0) as admin, COALESCE(SUM(qty*(bill_per_unit+fee_per_unit)),0) as omzet FROM transactions WHERE date >= ? AND date <= ?',
+        sql: 'SELECT COUNT(*) as c, COALESCE(SUM(total),0) as admin, COALESCE(SUM(total_paid),0) as omzet FROM transactions WHERE date >= ? AND date <= ?',
         args: [range.from, range.to],
       }),
       db.execute({ sql: 'SELECT COUNT(*) as c, COALESCE(SUM(amount),0) as total FROM expenses WHERE date >= ? AND date <= ?', args: [range.from, range.to] }),
@@ -183,7 +183,7 @@ async function executeReadTool(name: string, args: Record<string, unknown>): Pro
       period,
       range,
       pendapatan_bersih: Number(tx.admin),      // fee admin yang didapat agen — METRIK UTAMA
-      omzet: Number(tx.omzet),                  // total uang pembeli (kalau ada nominal tagihan)
+      omzet: Number(tx.omzet),                  // total uang dari pembeli
       transaksi: { count: Number(tx.c) },
       pengeluaran: { count: Number(ex.c), total: Number(ex.total) },
       laba_operasional: Number(tx.admin) - Number(ex.total), // bersih - pengeluaran
@@ -222,14 +222,14 @@ async function executeProposal(proposal: Proposal): Promise<{ results: string[];
         const date = String(action.payload.date ?? todayISO())
         const qty = Math.max(0, Math.floor(Number(action.payload.qty ?? 0) || 0))
         const fee = Math.max(0, Math.floor(Number(action.payload.fee_per_unit ?? 0) || 0))
-        const bill = Math.max(0, Math.floor(Number(action.payload.bill_per_unit ?? 0) || 0))
+        const totalPaid = Math.max(0, Math.floor(Number(action.payload.total_paid ?? 0) || 0))
         const note = action.payload.note ? String(action.payload.note).trim().slice(0, 200) : null
         const total = qty * fee // pendapatan bersih (fee admin)
         await db.execute({
-          sql: 'INSERT INTO transactions (category_id, date, qty, fee_per_unit, total, bill_per_unit, note) VALUES (?, ?, ?, ?, ?, ?, ?)',
-          args: [categoryId, date, qty, fee, total, bill, note],
+          sql: 'INSERT INTO transactions (category_id, date, qty, fee_per_unit, total, total_paid, note) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          args: [categoryId, date, qty, fee, total, totalPaid, note],
         })
-        const omzetInfo = bill > 0 ? ` (omzet ${qty * (bill + fee)})` : ''
+        const omzetInfo = totalPaid > 0 ? ` (omzet ${totalPaid})` : ''
         results.push(`✓ Transaksi: ${catName || 'kategori #' + categoryId} — ${qty} × ${fee} = ${total}${omzetInfo} (${date})`)
       } else if (action.type === 'update_category_fee') {
         let categoryId = Number(action.payload.category_id) || 0

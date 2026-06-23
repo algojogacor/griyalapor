@@ -20,7 +20,7 @@ import { cn } from '@/lib/utils'
 
 interface Category { id: number; name: string; group_name: string | null; default_fee: number }
 interface Txn {
-  id: number; date: string; qty: number; fee_per_unit: number; total: number; bill_per_unit: number; note: string | null
+  id: number; date: string; qty: number; fee_per_unit: number; total: number; total_paid: number; note: string | null
   category_name: string; category_group: string | null
 }
 
@@ -34,7 +34,7 @@ export function TransactionsSection() {
   const [categoryId, setCategoryId] = useState<string>('')
   const [qty, setQty] = useState('')
   const [fee, setFee] = useState('')
-  const [bill, setBill] = useState('')
+  const [totalPaid, setTotalPaid] = useState('')
   const [note, setNote] = useState('')
 
   function selectCategory(id: string) {
@@ -45,9 +45,9 @@ export function TransactionsSection() {
 
   const q = parseRupiahInput(qty) || 0
   const f = parseRupiahInput(fee) || 0
-  const b = parseRupiahInput(bill) || 0
+  const tp = parseRupiahInput(totalPaid) || 0
   const pendapatanBersih = q * f   // fee admin yang didapat
-  const omzet = q * (b + f)       // total uang dari pembeli (jika nominal diisi)
+  // omzet = total_paid langsung (uang dari pembeli), bukan dihitung per-pelanggan
 
   const addMutation = useMutation({
     mutationFn: async (payload: Record<string, unknown>) => {
@@ -59,7 +59,7 @@ export function TransactionsSection() {
       toast.success('Transaksi berhasil dicatat')
       qc.invalidateQueries({ queryKey: ['transactions'] })
       qc.invalidateQueries({ queryKey: ['summary'] })
-      setDate(todayISO()); setCategoryId(''); setQty(''); setFee(''); setBill(''); setNote('')
+      setDate(todayISO()); setCategoryId(''); setQty(''); setFee(''); setTotalPaid(''); setNote('')
       setOpen(false)
     },
     onError: (e: Error) => toast.error(e.message),
@@ -74,7 +74,7 @@ export function TransactionsSection() {
       date,
       qty: qVal,
       fee_per_unit: parseRupiahInput(fee),
-      bill_per_unit: parseRupiahInput(bill),
+      total_paid: parseRupiahInput(totalPaid),
       note: note.trim() || null,
     })
   }
@@ -144,12 +144,12 @@ export function TransactionsSection() {
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="bill" className="text-sm font-medium">Nominal Tagihan per Pelanggan (opsional)</Label>
+              <Label htmlFor="totalpaid" className="text-sm font-medium">Total Dibayar Pembeli / Omzet (opsional)</Label>
               <RupiahInput
-                id="bill" value={bill} onChange={setBill}
-                placeholder="200.000" className="h-12 text-lg font-semibold text-center tabular-nums"
+                id="totalpaid" value={totalPaid} onChange={setTotalPaid}
+                placeholder="14.000.000" className="h-12 text-lg font-semibold text-center tabular-nums"
               />
-              <p className="text-xs text-muted-foreground">Isi untuk menghitung omzet/kotor (uang pembeli). Boleh dikosongkan</p>
+              <p className="text-xs text-muted-foreground">Total seluruh uang dari pembeli (sudah termasuk fee). Tiap pelanggan beda nominal, jadi dijumlahkan. Boleh dikosongkan</p>
             </div>
 
             <div className="rounded-xl bg-primary/10 p-4 space-y-1.5">
@@ -157,10 +157,10 @@ export function TransactionsSection() {
                 <span className="font-medium">Pendapatan Bersih (fee admin)</span>
                 <span className="text-2xl font-bold tabular-nums text-primary">{formatRupiah(pendapatanBersih)}</span>
               </div>
-              {b > 0 && (
+              {tp > 0 && (
                 <div className="flex items-center justify-between text-sm text-muted-foreground pt-1 border-t border-primary/20">
                   <span>Omzet (uang dari pembeli)</span>
-                  <span className="font-semibold tabular-nums">{formatRupiah(omzet)}</span>
+                  <span className="font-semibold tabular-nums">{formatRupiah(tp)}</span>
                 </div>
               )}
             </div>
@@ -223,8 +223,8 @@ function TransactionList() {
   })
 
   const grandAdmin = filtered.reduce((s, t) => s + t.total, 0)
-  const grandOmzet = filtered.reduce((s, t) => s + (t.qty * (t.bill_per_unit + t.fee_per_unit)), 0)
-  const hasOmzet = filtered.some((t) => t.bill_per_unit > 0)
+  const grandOmzet = filtered.reduce((s, t) => s + t.total_paid, 0)
+  const hasOmzet = filtered.some((t) => t.total_paid > 0)
 
   return (
     <Card className="p-5">
@@ -274,7 +274,6 @@ function TransactionList() {
                     </div>
                     <div className="space-y-1.5">
                       {g.items.map((t) => {
-                        const omzet = t.qty * (t.bill_per_unit + t.fee_per_unit)
                         return (
                           <div key={t.id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-secondary/60 transition-colors group">
                             <div className={cn('w-11 h-11 rounded-xl flex flex-col items-center justify-center shrink-0 font-bold', getCategoryColor(t.category_group).bg, getCategoryColor(t.category_group).text)}>
@@ -285,11 +284,10 @@ function TransactionList() {
                               <div className="font-medium truncate">{t.category_name}</div>
                               <div className="text-xs text-muted-foreground">
                                 {t.qty} × {formatRupiah(t.fee_per_unit)}
-                                {t.bill_per_unit > 0 ? ` (tagihan ${formatRupiah(t.bill_per_unit)})` : ''}
                                 {t.note ? ` · ${t.note}` : ''}
                               </div>
-                              {t.bill_per_unit > 0 && (
-                                <div className="text-[11px] text-muted-foreground/80 mt-0.5">Omzet {formatRupiah(omzet)}</div>
+                              {t.total_paid > 0 && (
+                                <div className="text-[11px] text-muted-foreground/80 mt-0.5">Omzet {formatRupiah(t.total_paid)}</div>
                               )}
                             </div>
                             <div className="font-semibold text-success tabular-nums shrink-0">+{formatRupiah(t.total)}</div>
@@ -368,14 +366,13 @@ function EditTransactionDialog({ txn, onClose, onSaved }: { txn: Txn; onClose: (
   const [date, setDate] = useState(txn.date)
   const [qty, setQty] = useState(String(txn.qty))
   const [fee, setFee] = useState(String(txn.fee_per_unit))
-  const [bill, setBill] = useState(String(txn.bill_per_unit))
+  const [totalPaid, setTotalPaid] = useState(String(txn.total_paid))
   const [note, setNote] = useState(txn.note ?? '')
 
   const q = parseRupiahInput(qty) || 0
   const f = parseRupiahInput(fee) || 0
-  const b = parseRupiahInput(bill) || 0
+  const tp = parseRupiahInput(totalPaid) || 0
   const bersih = q * f
-  const omzet = q * (b + f)
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -386,7 +383,7 @@ function EditTransactionDialog({ txn, onClose, onSaved }: { txn: Txn; onClose: (
           date,
           qty: q,
           fee_per_unit: f,
-          bill_per_unit: b,
+          total_paid: tp,
           note: note.trim() || null,
         }),
       })
@@ -422,18 +419,18 @@ function EditTransactionDialog({ txn, onClose, onSaved }: { txn: Txn; onClose: (
             </div>
           </div>
           <div className="space-y-1.5">
-            <Label className="font-medium">Nominal Tagihan/Pelanggan (opsional)</Label>
-            <RupiahInput value={bill} onChange={setBill} className="h-12 text-lg font-semibold text-center tabular-nums" />
+            <Label className="font-medium">Total Dibayar Pembeli / Omzet (opsional)</Label>
+            <RupiahInput value={totalPaid} onChange={setTotalPaid} className="h-12 text-lg font-semibold text-center tabular-nums" />
           </div>
           <div className="rounded-xl bg-primary/10 p-3 space-y-1">
             <div className="flex items-center justify-between text-sm">
               <span>Pendapatan Bersih</span>
               <span className="font-bold tabular-nums text-primary">{formatRupiah(bersih)}</span>
             </div>
-            {b > 0 && (
+            {tp > 0 && (
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span>Omzet</span>
-                <span className="font-semibold tabular-nums">{formatRupiah(omzet)}</span>
+                <span className="font-semibold tabular-nums">{formatRupiah(tp)}</span>
               </div>
             )}
           </div>

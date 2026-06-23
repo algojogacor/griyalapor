@@ -12,22 +12,20 @@ export async function GET() {
   const week = thisWeekRange()
   const month = thisMonthRange()
 
-  // Helper aggregate transaksi: admin (bersih) + omzet (kotor)
+  // Helper aggregate transaksi: admin (bersih) + omzet (total uang pembeli)
   async function agg(range: { from: string; to: string }) {
     const r = await db.execute({
       sql: `SELECT COUNT(*) as count,
                    COALESCE(SUM(total),0) as admin,
-                   COALESCE(SUM(qty * (bill_per_unit + fee_per_unit)),0) as omzet,
-                   COALESCE(SUM(qty * bill_per_unit),0) as bill
+                   COALESCE(SUM(total_paid),0) as omzet
             FROM transactions WHERE date >= ? AND date <= ?`,
       args: [range.from, range.to],
     })
-    const x = r.rows[0] as { count: number; admin: number; omzet: number; bill: number }
+    const x = r.rows[0] as { count: number; admin: number; omzet: number }
     return {
       count: Number(x.count),
-      admin: Number(x.admin),       // pendapatan bersih (fee admin)
-      omzet: Number(x.omzet),       // pendapatan kotor (admin + uang pembeli)
-      bill: Number(x.bill),         // nominal tagihan (uang pembeli)
+      admin: Number(x.admin),       // pendapatan bersih (fee admin = qty*fee_per_unit)
+      omzet: Number(x.omzet),       // pendapatan kotor (total uang dari pembeli)
     }
   }
   async function expensesAgg(range: { from: string; to: string }) {
@@ -52,7 +50,7 @@ export async function GET() {
     sql: `SELECT c.id as category_id, c.name, c.group_name as "group",
                  COUNT(t.id) as count,
                  COALESCE(SUM(t.total),0) as admin,
-                 COALESCE(SUM(t.qty * (t.bill_per_unit + t.fee_per_unit)),0) as omzet
+                 COALESCE(SUM(t.total_paid),0) as omzet
           FROM categories c
           LEFT JOIN transactions t ON t.category_id = c.id AND t.date >= ? AND t.date <= ?
           GROUP BY c.id ORDER BY admin DESC, c.name`,
@@ -83,7 +81,7 @@ export async function GET() {
   for (const m of months) {
     const [inc, exp] = await Promise.all([
       db.execute({
-        sql: 'SELECT COALESCE(SUM(total),0) as admin, COALESCE(SUM(qty*(bill_per_unit+fee_per_unit)),0) as omzet FROM transactions WHERE date >= ? AND date <= ?',
+        sql: 'SELECT COALESCE(SUM(total),0) as admin, COALESCE(SUM(total_paid),0) as omzet FROM transactions WHERE date >= ? AND date <= ?',
         args: [m.from, m.to],
       }),
       db.execute({ sql: 'SELECT COALESCE(SUM(amount),0) as total FROM expenses WHERE date >= ? AND date <= ?', args: [m.from, m.to] }),
@@ -99,7 +97,7 @@ export async function GET() {
 
   // Transaksi terakhir (5)
   const recentRes = await db.execute({
-    sql: `SELECT t.id, t.category_id, t.date, t.qty, t.fee_per_unit, t.total, t.bill_per_unit, t.note,
+    sql: `SELECT t.id, t.category_id, t.date, t.qty, t.fee_per_unit, t.total, t.total_paid, t.note,
                  c.name as category_name, c.group_name as category_group
           FROM transactions t JOIN categories c ON c.id = t.category_id
           ORDER BY t.id DESC LIMIT 5`,

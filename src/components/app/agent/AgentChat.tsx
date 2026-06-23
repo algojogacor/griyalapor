@@ -357,10 +357,9 @@ function ActionRow({ action }: { action: ProposalAction }) {
   } else if (action.type === 'create_transaction') {
     const qty = Number(p.qty ?? 0)
     const fee = Number(p.fee_per_unit ?? 0)
-    const bill = Number(p.bill_per_unit ?? 0)
+    const totalPaid = Number(p.total_paid ?? 0)
     const bersih = qty * fee
-    const omzet = qty * (bill + fee)
-    const omzetInfo = bill > 0 ? ` · Omzet ${formatRupiah(omzet)}` : ''
+    const omzetInfo = totalPaid > 0 ? ` · Omzet ${formatRupiah(totalPaid)}` : ''
     label = `Catat: ${p.category_name ?? '#' + p.category_id} — ${qty} × ${formatRupiah(fee)} = Pendapatan Bersih ${formatRupiah(bersih)}${omzetInfo} (${p.date})`
   } else {
     label = `Ubah fee: ${p.category_name ?? '#' + p.category_id} → ${formatRupiah(Number(p.new_fee ?? 0))}`

@@ -20,13 +20,13 @@ interface Category { id: number; name: string; group_name: string | null; defaul
 
 interface Summary {
   ranges: { today: string; week: { from: string; to: string }; month: { from: string; to: string } }
-  today: { count: number; admin: number; omzet: number; bill: number }
-  week: { count: number; admin: number; omzet: number; bill: number }
-  month: { count: number; admin: number; omzet: number; bill: number }
+  today: { count: number; admin: number; omzet: number }
+  week: { count: number; admin: number; omzet: number }
+  month: { count: number; admin: number; omzet: number }
   expenses: { today: { count: number; total: number }; week: { count: number; total: number }; month: { count: number; total: number } }
   breakdown: { category_id: number; name: string; group: string | null; count: number; admin: number; omzet: number }[]
   recentTransactions: {
-    id: number; date: string; qty: number; fee_per_unit: number; total: number; bill_per_unit: number;
+    id: number; date: string; qty: number; fee_per_unit: number; total: number; total_paid: number;
     note: string | null; category_name: string; category_group: string | null
   }[]
 }
@@ -343,11 +343,11 @@ function QuickAddDialog({ category, onClose, onSaved }: { category: Category; on
   const [date, setDate] = useState(todayISO())
   const [qty, setQty] = useState('')
   const [fee, setFee] = useState(String(category.default_fee))
-  const [bill, setBill] = useState('')
+  const [totalPaid, setTotalPaid] = useState('')
 
   const q = Number(qty.replace(/[^\d]/g, '')) || 0
   const f = Number(fee.replace(/[^\d]/g, '')) || 0
-  const b = Number(bill.replace(/[^\d]/g, '')) || 0
+  const tp = Number(totalPaid.replace(/[^\d]/g, '')) || 0
   const bersih = q * f
 
   const mutation = useMutation({
@@ -360,7 +360,7 @@ function QuickAddDialog({ category, onClose, onSaved }: { category: Category; on
           date,
           qty: q,
           fee_per_unit: f,
-          bill_per_unit: b,
+          total_paid: tp,
           note: null,
         }),
       })
@@ -401,13 +401,21 @@ function QuickAddDialog({ category, onClose, onSaved }: { category: Category; on
               <RupiahInput value={fee} onChange={setFee} className="h-12 text-lg font-bold text-center tabular-nums" />
             </div>
             <div className="space-y-1.5">
-              <Label className="font-medium text-xs">Tagihan/Pelanggan (opsional)</Label>
-              <RupiahInput value={bill} onChange={setBill} placeholder="0" className="h-12 text-lg font-semibold text-center tabular-nums" />
+              <Label className="font-medium text-xs">Total Dibayar Pembeli (opsional)</Label>
+              <RupiahInput value={totalPaid} onChange={setTotalPaid} placeholder="0" className="h-12 text-lg font-semibold text-center tabular-nums" />
             </div>
           </div>
-          <div className="rounded-xl bg-primary/10 p-3 flex items-center justify-between">
-            <span className="font-medium text-sm">Pendapatan Bersih</span>
-            <span className="text-xl font-bold tabular-nums text-primary">{formatRupiah(bersih)}</span>
+          <div className="rounded-xl bg-primary/10 p-3 space-y-1">
+            <div className="flex items-center justify-between text-sm">
+              <span className="font-medium">Pendapatan Bersih (fee admin)</span>
+              <span className="font-bold tabular-nums text-primary">{formatRupiah(bersih)}</span>
+            </div>
+            {tp > 0 && (
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>Omzet (uang pembeli)</span>
+                <span className="font-semibold tabular-nums">{formatRupiah(tp)}</span>
+              </div>
+            )}
           </div>
         </div>
         <DialogFooter>
