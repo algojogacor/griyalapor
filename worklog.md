@@ -107,3 +107,49 @@ Stage Summary:
 - Mistral free-tier bisa 429; sudah ada fallback key. Pertimbangkan upgrade tier jika dipakai intensif.
 - Prisma schema.prisma sekarang hanya dokumentasi (tidak dipakai runtime); runtime pakai schema.sql + libsql client.
 - Saran next phase: data seeding lebih banyak untuk demo, filter kategori di laporan, recurring expenses, export per kategori, PWA install prompt UI, optimasi bundle (analyze).
+
+---
+Task ID: 7
+Agent: main (orchestrator)
+Task: Perbaikan model bisnis PPOB (Pendapatan Bersih vs Omzet) + perapian gaya tulisan AI Agent
+
+Work Log:
+- Klarifikasi model bisnis dari user: "Pendapatan Bersih" = fee admin (qty × fee_per_unit) = METRIK UTAMA. "Pendapatan Kotor/Omzet" = total uang pembeli = qty × (nominal_tagihan + fee). "Pengeluaran" = hal terpisah, BUKAN pengurang kotor→bersih. Yang benar: Laba Operasional = Bersih - Pengeluaran.
+- Migration: ALTER TABLE transactions ADD COLUMN bill_per_unit INTEGER NOT NULL DEFAULT 0 (nominal tagihan per pelanggan, opsional). Update prisma/schema.sql.
+- API transactions POST: terima bill_per_unit. GET: kembalikan bill_per_unit.
+- API summary: aggregate admin (SUM(total)), omzet (SUM(qty*(bill+fee))), bill. Breakdown & monthlyTrend sekarang punya field admin+omzet (bukan lagi total).
+- API export CSV: kolom Tanggal,Kategori,Grup,Jumlah,Tagihan/Unit,Fee/Unit,Pendapatan Bersih,Omzet,Catatan + TOTAL BERSIH + TOTAL OMZET + LABA OPERASIONAL.
+- API import: terima bill_per_unit di row.
+- Form Transaksi: tambah input "Nominal Tagihan per Pelanggan (opsional)". Preview: "Pendapatan Bersih (fee admin)" + "Omzet (uang dari pembeli)" (muncul kalau bill diisi). Label "Fee per Unit" → "Fee per Pelanggan".
+- List transaksi: tampilkan omzet per baris kalau bill > 0. Footer: "Total Pendapatan Bersih" + "Total Omzet".
+- Dashboard: hero card = "Pendapatan Hari Ini (fee admin)". StatCard baru param omzet (tampil kalau omzet > admin). Breakdown pakai b.admin.
+- Reports: 4 kartu (Pendapatan Bersih, Pendapatan Kotor/Omzet, Jumlah Transaksi, Laba Operasional/Pengeluaran). MonthlyChart 3 bar (hijau=Bersih, biru=Omzet, merah=Pengeluaran) dengan legend. Breakdown table: kolom Qty, Pendapatan Bersih, Omzet. Export PDF: tabel dgn kolom Tagihan+Bersih+Omzet, TOTAL BERSIH + TOTAL OMZET, LABA OPERASIONAL.
+- Import: tambah field "Nominal Tagihan/Unit" (auto-detect header: tagihan/bill/nominal/nilai). Sample CSV tambah kolom Tagihan. Preview table: Bersih + Omzet.
+- AI Agent system prompt DITULIS ULANG:
+  - Section "MODEL BISNIS PPOB" eksplisit: bersih=admin=utama, kotor=omzet, pengeluaran=terpisah. "Jangan pernah bilang pendapatan bersih = kotor - pengeluaran".
+  - Section "GAYA BAHASA": singkat, to-the-point, satu kalimat per topik, boleh list •, JANGAN berlebihan bold/italic, JANGAN emoji (kecuali ✓), jangan ---, jangan ulang pertanyaan user.
+  - Tool get_summary: return pendapatan_bersih, omzet, transaksi.count, pengeluaran, laba_operasional.
+  - Tool get_transactions: return pendapatan_bersih, bill_per_unit, omzet per baris.
+  - Tool propose_action payload create_transaction: dukung bill_per_unit (kalau user sebut nominal tagihan).
+  - Eksekusi proposal create_transaction: simpan bill_per_unit, log omzet kalau bill>0.
+- AgentChat: ActionRow proposal tampilkan "Pendapatan Bersih" + "Omzet" kalau bill ada. Quick suggestions diupdate (contoh: "Catat 10 PDAM fee 2500 tagihan 150rb").
+
+VERIFIKASI agent-browser:
+- Input manual: PLN Pascabayar, qty=10, fee=3000 (auto), bill=200000 → preview "Pendapatan Bersih Rp30.000" + "Omzet Rp2.030.000" → simpan sukses, list tampilkan omzet ✓
+- AI "Rekap hari ini dong" → jawab: "Pendapatan bersih (fee admin): Rp105.000 • Omzet (uang dari pelanggan): Rp2.105.000 • Transaksi: 2 kali • Pengeluaran: Tidak ada • Laba operasional: Rp105.000 ✓" — terminologi BENAR, gaya rapi (1 emoji ✓, bold secukupnya, no ---) ✓
+- Laporan: kartu Pendapatan Bersih Rp105.000 + Pendapatan Kotor Rp2.105.000 + Laba Operasional Rp105.000; grafik 6 bulan 3 bar (hijau/biru/merah) + legend; breakdown table kolom Bersih+Omzet ✓
+- bun run lint PASS ✓
+
+Stage Summary:
+- Model bisnis PPOB sekarang akurat: Bersih (fee admin) = metrik utama, Omzet = uang pembeli (opsional via nominal tagihan), Pengeluaran = terpisah, Laba Operasional = Bersih - Pengeluaran.
+- Gaya tulisan AI Agent dirapikan: singkat, tanpa bold/emoji berlebihan, konsisten terminologi.
+- Kolom "Nominal Tagihan per Pelanggan" opsional di form transaksi & impor CSV — tidak membebani kakek kalau tidak diisi, tapi membuka kemampuan hitung omzet.
+- Semua section (Dashboard, Transaksi, Laporan, Impor) konsisten pakai terminologi baru.
+
+## Status Proyek
+- STABIL & terverifikasi. Model bisnis akurat, AI rapi. Cron review tiap 15 menit tetap aktif.
+
+## Risiko / Saran next
+- Data transaksi lama (sebelum perubahan) punya bill_per_unit=0 → omzetnya = bersih. Itu expected (belum pernah dicatat nominalnya).
+- Bisa tambah fitur "edit transaksi" (saat ini hanya hapus) agar kakek bisa koreksi nominal tagihan di transaksi lama.
+- Bisa tambah toggle "tampilkan omzet" di settings kalau kakek mau mode simple (tanpa omzet).

@@ -47,7 +47,7 @@ const MonthlyChart = dynamic(
 
 // ---------- Tipe data dari API ----------
 interface Summary {
-  monthlyTrend: { ym: string; total: number; expenses: number }[]
+  monthlyTrend: { ym: string; admin: number; omzet: number; expenses: number }[]
 }
 
 interface Txn {
@@ -55,7 +55,8 @@ interface Txn {
   date: string
   qty: number
   fee_per_unit: number
-  total: number
+  total: number          // pendapatan bersih (admin)
+  bill_per_unit: number
   note: string | null
   category_name: string
   category_group: string | null
@@ -120,19 +121,21 @@ export function ReportsSection() {
   const txns = txData?.transactions ?? []
   const expenses = expData?.expenses ?? []
 
-  const totalIncome = useMemo(() => txns.reduce((s, t) => s + t.total, 0), [txns])
+  const totalAdmin = useMemo(() => txns.reduce((s, t) => s + t.total, 0), [txns]) // pendapatan bersih (fee admin)
+  const totalOmzet = useMemo(() => txns.reduce((s, t) => s + t.qty * (t.bill_per_unit + t.fee_per_unit), 0), [txns]) // pendapatan kotor (uang pembeli)
+  const hasOmzet = useMemo(() => txns.some((t) => t.bill_per_unit > 0), [txns])
   const txCount = txns.length
   const totalExpenses = useMemo(
     () => expenses.reduce((s, e) => s + e.amount, 0),
     [expenses],
   )
-  const netProfit = totalIncome - totalExpenses
+  const labaOperasional = totalAdmin - totalExpenses
 
   // Breakdown per kategori (untuk rentang yg dipilih)
   const breakdown = useMemo(() => {
     const map = new Map<
       string,
-      { name: string; group: string | null; count: number; total: number }
+      { name: string; group: string | null; count: number; admin: number; omzet: number; qty: number }
     >()
     for (const t of txns) {
       const key = t.category_name
@@ -141,16 +144,20 @@ export function ReportsSection() {
           name: t.category_name,
           group: t.category_group,
           count: 0,
-          total: 0,
+          admin: 0,
+          omzet: 0,
+          qty: 0,
         }
       e.count += 1
-      e.total += t.total
+      e.qty += t.qty
+      e.admin += t.total
+      e.omzet += t.qty * (t.bill_per_unit + t.fee_per_unit)
       map.set(key, e)
     }
-    return Array.from(map.values()).sort((a, b) => b.total - a.total)
+    return Array.from(map.values()).sort((a, b) => b.admin - a.admin)
   }, [txns])
 
-  const maxCat = breakdown.length ? breakdown[0].total : 0
+  const maxCat = breakdown.length ? Math.max(...breakdown.map((b) => b.admin)) : 0
   const monthlyTrend = summary?.monthlyTrend ?? []
 
   function setRangePreset(kind: 'month' | 'week') {
@@ -184,9 +191,11 @@ export function ReportsSection() {
       txns,
       expenses,
       expensesEnabled,
-      totalIncome,
+      totalAdmin,
+      totalOmzet,
+      hasOmzet,
       totalExpenses,
-      netProfit,
+      labaOperasional,
     })
     w.document.open()
     w.document.write(html)
@@ -263,18 +272,23 @@ export function ReportsSection() {
       </Card>
 
       {/* Kartu ringkasan */}
-      <div
-        className={cn(
-          'grid gap-3',
-          expensesEnabled ? 'grid-cols-2 lg:grid-cols-4' : 'grid-cols-2',
-        )}
-      >
+      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
         <StatCard
-          label="Total Pendapatan"
-          value={totalIncome}
+          label="Pendapatan Bersih"
+          sub="fee admin yang didapat"
+          value={totalAdmin}
           icon={<TrendingUp className="w-5 h-5" />}
           loading={txLoading}
           color="success"
+        />
+        <StatCard
+          label="Pendapatan Kotor"
+          sub="omzet / uang pembeli"
+          value={totalOmzet}
+          icon={<Wallet className="w-5 h-5" />}
+          loading={txLoading}
+          color="primary"
+          dimmed={!hasOmzet}
         />
         <StatCard
           label="Jumlah Transaksi"
@@ -283,23 +297,24 @@ export function ReportsSection() {
           loading={txLoading}
           isCount
         />
-        {expensesEnabled && (
-          <>
-            <StatCard
-              label="Total Pengeluaran"
-              value={totalExpenses}
-              icon={<TrendingDown className="w-5 h-5" />}
-              loading={expLoading}
-              color="destructive"
-            />
-            <StatCard
-              label="Laba Bersih"
-              value={netProfit}
-              icon={<Wallet className="w-5 h-5" />}
-              loading={txLoading || expLoading}
-              color={netProfit >= 0 ? 'primary' : 'destructive'}
-            />
-          </>
+        {expensesEnabled ? (
+          <StatCard
+            label="Laba Operasional"
+            sub="bersih − pengeluaran"
+            value={labaOperasional}
+            icon={<TrendingDown className="w-5 h-5" />}
+            loading={txLoading || expLoading}
+            color={labaOperasional >= 0 ? 'success' : 'destructive'}
+          />
+        ) : (
+          <StatCard
+            label="Total Pengeluaran"
+            value={totalExpenses}
+            icon={<TrendingDown className="w-5 h-5" />}
+            loading={expLoading}
+            color="destructive"
+            dimmed={!expensesEnabled}
+          />
         )}
       </div>
 
@@ -326,6 +341,9 @@ export function ReportsSection() {
             </div>
           )}
         </div>
+        <p className="text-xs text-muted-foreground mt-2">
+          Batang hijau = Pendapatan Bersih (fee admin). Batang biru = Omzet (uang pembeli, hanya jika nominal tagihan diisi).{expensesEnabled ? ' Batang merah = Pengeluaran.' : ''}
+        </p>
       </Card>
 
       {/* Breakdown per kategori */}
@@ -351,8 +369,9 @@ export function ReportsSection() {
               <TableRow>
                 <TableHead>Kategori</TableHead>
                 <TableHead className="hidden sm:table-cell">Grup</TableHead>
-                <TableHead className="text-right">Jumlah</TableHead>
-                <TableHead className="text-right">Total</TableHead>
+                <TableHead className="text-right">Qty</TableHead>
+                <TableHead className="text-right">Pendapatan Bersih</TableHead>
+                {hasOmzet && <TableHead className="text-right hidden sm:table-cell">Omzet</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -362,7 +381,7 @@ export function ReportsSection() {
                     <div className="font-medium">{b.name}</div>
                     <div className="mt-1.5">
                       <Progress
-                        value={maxCat > 0 ? (b.total / maxCat) * 100 : 0}
+                        value={maxCat > 0 ? (b.admin / maxCat) * 100 : 0}
                         className="h-1.5 w-28 sm:w-40"
                       />
                     </div>
@@ -374,11 +393,16 @@ export function ReportsSection() {
                     {b.group ?? 'Lainnya'}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {b.count}
+                    {b.qty}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums font-semibold">
-                    {formatRupiah(b.total)}
+                  <TableCell className="text-right tabular-nums font-semibold text-success">
+                    {formatRupiah(b.admin)}
                   </TableCell>
+                  {hasOmzet && (
+                    <TableCell className="text-right tabular-nums text-muted-foreground hidden sm:table-cell">
+                      {b.omzet > b.admin ? formatRupiah(b.omzet) : '—'}
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>
@@ -394,17 +418,21 @@ export function ReportsSection() {
 function StatCard({
   label,
   value,
+  sub,
   icon,
   loading,
   color = 'default',
   isCount = false,
+  dimmed = false,
 }: {
   label: string
   value: number
+  sub?: string
   icon?: React.ReactNode
   loading?: boolean
   color?: 'default' | 'success' | 'destructive' | 'primary'
   isCount?: boolean
+  dimmed?: boolean
 }) {
   const colorClass = {
     default: '',
@@ -414,7 +442,7 @@ function StatCard({
   }[color]
 
   return (
-    <Card className="p-4">
+    <Card className={cn('p-4', dimmed && 'opacity-60')}>
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">{label}</p>
         {icon && (
@@ -423,7 +451,7 @@ function StatCard({
       </div>
       <div
         className={cn(
-          'text-2xl font-bold mt-2 tabular-nums break-all',
+          'text-xl lg:text-2xl font-bold mt-2 tabular-nums break-all',
           colorClass,
         )}
       >
@@ -435,6 +463,7 @@ function StatCard({
           formatRupiah(value)
         )}
       </div>
+      {sub && <p className="text-[11px] text-muted-foreground mt-0.5">{sub}</p>}
     </Card>
   )
 }
@@ -447,11 +476,13 @@ function buildPrintHTML(opts: {
   txns: Txn[]
   expenses: Expense[]
   expensesEnabled: boolean
-  totalIncome: number
+  totalAdmin: number
+  totalOmzet: number
+  hasOmzet: boolean
   totalExpenses: number
-  netProfit: number
+  labaOperasional: number
 }): string {
-  const { from, to, txns, expenses, expensesEnabled, totalIncome, totalExpenses, netProfit } = opts
+  const { from, to, txns, expenses, expensesEnabled, totalAdmin, totalOmzet, hasOmzet, totalExpenses, labaOperasional } = opts
 
   const esc = (s: string | null | undefined): string =>
     (s ?? '')
@@ -463,16 +494,27 @@ function buildPrintHTML(opts: {
 
   const txRows = txns
     .map(
-      (t) => `
+      (t) => {
+        const omzet = t.qty * (t.bill_per_unit + t.fee_per_unit)
+        const omzetCell = hasOmzet
+          ? `<td style="text-align:right">${t.bill_per_unit > 0 ? fmt(omzet) : '—'}</td>`
+          : ''
+        const billCell = hasOmzet
+          ? `<td style="text-align:right">${t.bill_per_unit > 0 ? fmt(t.bill_per_unit) : '—'}</td>`
+          : ''
+        return `
       <tr>
         <td>${esc(t.date)}</td>
         <td>${esc(t.category_name)}</td>
         <td>${esc(t.category_group ?? '')}</td>
         <td style="text-align:right">${t.qty}</td>
         <td style="text-align:right">${fmt(t.fee_per_unit)}</td>
+        ${billCell}
         <td style="text-align:right">${fmt(t.total)}</td>
+        ${omzetCell}
         <td>${esc(t.note ?? '')}</td>
-      </tr>`,
+      </tr>`
+      },
     )
     .join('')
 
@@ -499,9 +541,9 @@ function buildPrintHTML(opts: {
         <tr class="total"><td></td><td>TOTAL PENGELUARAN</td><td style="text-align:right">${fmt(totalExpenses)}</td></tr>
       </tbody>
     </table>
-    <div class="net ${netProfit >= 0 ? 'positive' : 'negative'}">
-      <strong>LABA BERSIH (Pendapatan − Pengeluaran):</strong>
-      <span>${fmt(netProfit)}</span>
+    <div class="net ${labaOperasional >= 0 ? 'positive' : 'negative'}">
+      <strong>LABA OPERASIONAL (Pendapatan Bersih − Pengeluaran):</strong>
+      <span>${fmt(labaOperasional)}</span>
     </div>`
     : ''
 
@@ -572,15 +614,17 @@ function buildPrintHTML(opts: {
         <th>Tanggal</th>
         <th>Kategori</th>
         <th>Grup</th>
-        <th style="text-align:right">Jumlah</th>
+        <th style="text-align:right">Qty</th>
         <th style="text-align:right">Fee/Unit</th>
-        <th style="text-align:right">Total</th>
+        ${hasOmzet ? '<th style="text-align:right">Tagihan/Unit</th>' : ''}
+        <th style="text-align:right">Pendapatan Bersih</th>
+        ${hasOmzet ? '<th style="text-align:right">Omzet</th>' : ''}
         <th>Catatan</th>
       </tr>
     </thead>
     <tbody>
-      ${txRows || '<tr><td colspan="7" style="text-align:center;color:#888">Tidak ada transaksi</td></tr>'}
-      <tr class="total"><td colspan="5">TOTAL PENDAPATAN</td><td style="text-align:right">${fmt(totalIncome)}</td><td></td></tr>
+      ${txRows || `<tr><td colspan="${hasOmzet ? 9 : 7}" style="text-align:center;color:#888">Tidak ada transaksi</td></tr>`}
+      <tr class="total"><td colspan="${hasOmzet ? 6 : 5}">TOTAL PENDAPATAN BERSIH (FEE ADMIN)</td><td style="text-align:right">${fmt(totalAdmin)}</td>${hasOmzet ? '<td style="text-align:right">' + fmt(totalOmzet) + '</td>' : ''}<td></td></tr>
     </tbody>
   </table>
 

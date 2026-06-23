@@ -26,9 +26,9 @@ interface ChatMessage {
 
 const SUGGESTIONS = [
   'Rekap hari ini dong',
-  'Berapa total PLN bulan ini?',
+  'Berapa pendapatan PLN bulan ini?',
   'Tadi 49 idpel PLN admin 3000',
-  'Ganti fee PDAM jadi 2500',
+  'Catat 10 PDAM fee 2500 tagihan 150rb',
 ]
 
 export function AgentChat({ open }: { open: boolean }) {
@@ -351,12 +351,20 @@ function ProposalCard({
 
 function ActionRow({ action }: { action: ProposalAction }) {
   const p = action.payload
-  const label =
-    action.type === 'create_category'
-      ? `Buat kategori: ${p.name} · grup ${p.group ?? '-'} · fee ${formatRupiah(Number(p.default_fee ?? 0))}`
-      : action.type === 'create_transaction'
-        ? `Catat: ${p.category_name ?? '#' + p.category_id} — ${p.qty} × ${formatRupiah(Number(p.fee_per_unit ?? 0))} = ${formatRupiah(Number(p.qty ?? 0) * Number(p.fee_per_unit ?? 0))} (${p.date})`
-        : `Ubah fee: ${p.category_name ?? '#' + p.category_id} → ${formatRupiah(Number(p.new_fee ?? 0))}`
+  let label: string
+  if (action.type === 'create_category') {
+    label = `Buat kategori: ${p.name} · grup ${p.group ?? '-'} · fee ${formatRupiah(Number(p.default_fee ?? 0))}`
+  } else if (action.type === 'create_transaction') {
+    const qty = Number(p.qty ?? 0)
+    const fee = Number(p.fee_per_unit ?? 0)
+    const bill = Number(p.bill_per_unit ?? 0)
+    const bersih = qty * fee
+    const omzet = qty * (bill + fee)
+    const omzetInfo = bill > 0 ? ` · Omzet ${formatRupiah(omzet)}` : ''
+    label = `Catat: ${p.category_name ?? '#' + p.category_id} — ${qty} × ${formatRupiah(fee)} = Pendapatan Bersih ${formatRupiah(bersih)}${omzetInfo} (${p.date})`
+  } else {
+    label = `Ubah fee: ${p.category_name ?? '#' + p.category_id} → ${formatRupiah(Number(p.new_fee ?? 0))}`
+  }
 
   return (
     <div className="text-xs bg-card rounded-lg px-3 py-2 border flex items-start gap-2">

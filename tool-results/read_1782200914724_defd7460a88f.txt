@@ -1,0 +1,784 @@
+     1→'use client'
+     2→
+     3→import { useState, useMemo, useRef, useCallback } from 'react'
+     4→import { useMutation, useQueryClient } from '@tanstack/react-query'
+     5→import Papa from 'papaparse'
+     6→import { Card } from '@/components/ui/card'
+     7→import { Button } from '@/components/ui/button'
+     8→import { Label } from '@/components/ui/label'
+     9→import {
+    10→  Select,
+    11→  SelectContent,
+    12→  SelectItem,
+    13→  SelectTrigger,
+    14→  SelectValue,
+    15→} from '@/components/ui/select'
+    16→import {
+    17→  Table,
+    18→  TableHeader,
+    19→  TableBody,
+    20→  TableHead,
+    21→  TableRow,
+    22→  TableCell,
+    23→} from '@/components/ui/table'
+    24→import { Badge } from '@/components/ui/badge'
+    25→import { toast } from 'sonner'
+    26→import { formatRupiah } from '@/lib/format'
+    27→import {
+    28→  Upload,
+    29→  FileSpreadsheet,
+    30→  Download,
+    31→  ArrowRight,
+    32→  ArrowLeft,
+    33→  CheckCircle2,
+    34→  AlertTriangle,
+    35→  FileUp,
+    36→  RotateCcw,
+    37→  X,
+    38→} from 'lucide-react'
+    39→import { cn } from '@/lib/utils'
+    40→
+    41→// ---------- Tipe ----------
+    42→type Field = 'date' | 'category' | 'group' | 'qty' | 'fee' | 'note'
+    43→type DateFormat = 'YYYY-MM-DD' | 'DD/MM/YYYY' | 'DD-MM-YYYY'
+    44→
+    45→interface ImportResult {
+    46→  imported: number
+    47→  errors: { row: number; error: string }[]
+    48→  createdCategories: string[]
+    49→}
+    50→
+    51→const FIELD_LABELS: Record<Field, string> = {
+    52→  date: 'Tanggal',
+    53→  category: 'Kategori',
+    54→  group: 'Grup',
+    55→  qty: 'Jumlah (qty)',
+    56→  fee: 'Fee per Unit',
+    57→  note: 'Catatan',
+    58→}
+    59→
+    60→const FIELD_REQUIRED: Record<Field, boolean> = {
+    61→  date: true,
+    62→  category: true,
+    63→  group: false,
+    64→  qty: true,
+    65→  fee: false,
+    66→  note: false,
+    67→}
+    68→
+    69→const FIELD_HINTS: Record<Field, string> = {
+    70→  date: 'Format tanggal akan terdeteksi otomatis',
+    71→  category: 'Nama kategori/layanan (contoh: PLN, BPJS)',
+    72→  group: 'Opsional. Contoh: Listrik, Air',
+    73→  qty: 'Jumlah pelanggan/IDPEL',
+    74→  fee: 'Biaya admin per unit (Rp). Kosongkan = 0',
+    75→  note: 'Opsional',
+    76→}
+    77→
+    78→const NO_MAPPING = '__none__'
+    79→
+    80→// ---------- Deteksi otomatis ----------
+    81→
+    82→function detectHeaderField(header: string): Field | null {
+    83→  const h = header.toLowerCase().trim()
+    84→  if (/(^|_)tanggal($|_)|^date$|^tgl\b|tanggal/.test(h)) return 'date'
+    85→  if (/kategori|jenis|layanan|category/.test(h)) return 'category'
+    86→  if (/grup|group/.test(h)) return 'group'
+    87→  if (/jumlah|qty|pelanggan|idpel|quantity/.test(h)) return 'qty'
+    88→  if (/fee|admin/.test(h)) return 'fee'
+    89→  if (/catatan|note|ket/.test(h)) return 'note'
+    90→  return null
+    91→}
+    92→
+    93→function detectDateFormat(samples: string[]): DateFormat | null {
+    94→  const nonEmpty = samples.filter((s) => s && s.trim())
+    95→  if (nonEmpty.length === 0) return null
+    96→  let ymd = 0
+    97→  let dmySlash = 0
+    98→  let dmyDash = 0
+    99→  for (const s of nonEmpty) {
+   100→    const v = s.trim()
+   101→    if (/^\d{4}-\d{2}-\d{2}$/.test(v)) ymd++
+   102→    else if (/^\d{2}\/\d{2}\/\d{4}$/.test(v)) dmySlash++
+   103→    else if (/^\d{2}-\d{2}-\d{4}$/.test(v)) dmyDash++
+   104→  }
+   105→  const half = nonEmpty.length / 2
+   106→  if (ymd >= half) return 'YYYY-MM-DD'
+   107→  if (dmySlash >= half) return 'DD/MM/YYYY'
+   108→  if (dmyDash >= half) return 'DD-MM-YYYY'
+   109→  if (ymd > 0) return 'YYYY-MM-DD'
+   110→  if (dmySlash > 0) return 'DD/MM/YYYY'
+   111→  if (dmyDash > 0) return 'DD-MM-YYYY'
+   112→  return null
+   113→}
+   114→
+   115→function normalizeDate(raw: string, fmt: DateFormat | null): string {
+   116→  const s = (raw ?? '').trim()
+   117→  if (!s) return ''
+   118→  if (!fmt || fmt === 'YYYY-MM-DD') {
+   119→    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
+   120→    const d = new Date(s)
+   121→    if (!isNaN(d.getTime())) {
+   122→      const y = d.getFullYear()
+   123→      const m = String(d.getMonth() + 1).padStart(2, '0')
+   124→      const dd = String(d.getDate()).padStart(2, '0')
+   125→      return `${y}-${m}-${dd}`
+   126→    }
+   127→    return s
+   128→  }
+   129→  if (fmt === 'DD/MM/YYYY') {
+   130→    const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+   131→    if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`
+   132→  }
+   133→  if (fmt === 'DD-MM-YYYY') {
+   134→    const m = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/)
+   135→    if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`
+   136→  }
+   137→  return s
+   138→}
+   139→
+   140→function normalizeInt(raw: string): number {
+   141→  if (!raw) return 0
+   142→  const cleaned = String(raw).replace(/[^\d-]/g, '')
+   143→  const n = parseInt(cleaned, 10)
+   144→  return Number.isFinite(n) ? Math.max(0, n) : 0
+   145→}
+   146→
+   147→// ---------- Komponen utama ----------
+   148→
+   149→export function ImportSection() {
+   150→  const [step, setStep] = useState<1 | 2 | 3>(1)
+   151→  const [fileName, setFileName] = useState('')
+   152→  const [rawRows, setRawRows] = useState<Record<string, string>[]>([])
+   153→  const [headers, setHeaders] = useState<string[]>([])
+   154→  const [mapping, setMapping] = useState<Partial<Record<Field, string>>>({})
+   155→  const [dateFormat, setDateFormat] = useState<DateFormat | null>(null)
+   156→  const [detectedDateFormat, setDetectedDateFormat] = useState<DateFormat | null>(null)
+   157→  const [result, setResult] = useState<ImportResult | null>(null)
+   158→  const [dragOver, setDragOver] = useState(false)
+   159→  const fileInputRef = useRef<HTMLInputElement>(null)
+   160→  const qc = useQueryClient()
+   161→
+   162→  const handleFile = useCallback((file: File) => {
+   163→    if (!file.name.toLowerCase().endsWith('.csv') && file.type !== 'text/csv') {
+   164→      toast.error('File harus berekstensi .csv')
+   165→      return
+   166→    }
+   167→    Papa.parse<Record<string, string>>(file, {
+   168→      header: true,
+   169→      skipEmptyLines: true,
+   170→      complete: (res) => {
+   171→        const allRows = (res.data ?? []) as Record<string, string>[]
+   172→        const rows = allRows.filter(
+   173→          (r) =>
+   174→            r &&
+   175→            Object.values(r).some((v) => v != null && String(v).trim() !== ''),
+   176→        )
+   177→        if (rows.length === 0) {
+   178→          toast.error('CSV kosong atau tidak ada baris data')
+   179→          return
+   180→        }
+   181→        const hdrs = (res.meta.fields ?? Object.keys(rows[0] ?? {})).filter(
+   182→          (h) => h && h.trim() !== '',
+   183→        )
+   184→        if (hdrs.length === 0) {
+   185→          toast.error('CSV tidak memiliki baris header')
+   186→          return
+   187→        }
+   188→        setRawRows(rows)
+   189→        setHeaders(hdrs)
+   190→        setFileName(file.name)
+   191→
+   192→        // Auto-detect mapping
+   193→        const auto: Partial<Record<Field, string>> = {}
+   194→        for (const h of hdrs) {
+   195→          const f = detectHeaderField(h)
+   196→          if (f && !auto[f]) auto[f] = h
+   197→        }
+   198→        setMapping(auto)
+   199→
+   200→        // Auto-detect date format
+   201→        if (auto.date) {
+   202→          const samples = rows
+   203→            .slice(0, 10)
+   204→            .map((r) => r[auto.date!])
+   205→            .filter(Boolean)
+   206→          const fmt = detectDateFormat(samples)
+   207→          setDetectedDateFormat(fmt)
+   208→          setDateFormat(fmt)
+   209→        } else {
+   210→          setDetectedDateFormat(null)
+   211→          setDateFormat(null)
+   212→        }
+   213→
+   214→        setResult(null)
+   215→        setStep(2)
+   216→        toast.success(`Berhasil membaca ${rows.length} baris dari CSV`)
+   217→      },
+   218→      error: (err: Error) => {
+   219→        toast.error('Gagal membaca CSV: ' + err.message)
+   220→      },
+   221→    })
+   222→  }, [])
+   223→
+   224→  function downloadSample() {
+   225→    const csv =
+   226→      'Tanggal,Kategori,Grup,Jumlah,Fee,Catatan\n' +
+   227→      '23/06/2026,PLN,Listrik,49,3000,Shift pagi\n' +
+   228→      '23/06/2026,BPJS,Kesehatan,12,2500,\n'
+   229→    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+   230→    const url = URL.createObjectURL(blob)
+   231→    const a = document.createElement('a')
+   232→    a.href = url
+   233→    a.download = 'contoh-impor-griyalapor.csv'
+   234→    document.body.appendChild(a)
+   235→    a.click()
+   236→    document.body.removeChild(a)
+   237→    URL.revokeObjectURL(url)
+   238→    toast.success('Contoh CSV diunduh')
+   239→  }
+   240→
+   241→  // Preview 8 baris pertama
+   242→  const previewRows = useMemo(() => {
+   243→    if (step < 2) return []
+   244→    return rawRows.slice(0, 8).map((r) => {
+   245→      const dateRaw = mapping.date ? r[mapping.date] ?? '' : ''
+   246→      const date = normalizeDate(dateRaw, dateFormat)
+   247→      const category = mapping.category ? (r[mapping.category] ?? '').trim() : ''
+   248→      const group = mapping.group ? (r[mapping.group] ?? '').trim() : ''
+   249→      const qty = mapping.qty ? normalizeInt(r[mapping.qty] ?? '') : 0
+   250→      const fee = mapping.fee ? normalizeInt(r[mapping.fee] ?? '') : 0
+   251→      const note = mapping.note ? (r[mapping.note] ?? '').trim() : ''
+   252→      return { date, category, group, qty, fee, total: qty * fee, note }
+   253→    })
+   254→  }, [step, rawRows, mapping, dateFormat])
+   255→
+   256→  // Validasi mapping wajib
+   257→  const missingRequired: Field[] = useMemo(() => {
+   258→    const out: Field[] = []
+   259→    const required: Field[] = ['date', 'category', 'qty']
+   260→    for (const f of required) {
+   261→      if (!mapping[f]) out.push(f)
+   262→    }
+   263→    return out
+   264→  }, [mapping])
+   265→
+   266→  const importMutation = useMutation({
+   267→    mutationFn: async (payload: {
+   268→      rows: {
+   269→        date: string
+   270→        category: string
+   271→        group: string | null
+   272→        qty: number
+   273→        fee_per_unit: number
+   274→        note: string | null
+   275→      }[]
+   276→      createMissing: boolean
+   277→    }) => {
+   278→      const res = await fetch('/api/import', {
+   279→        method: 'POST',
+   280→        headers: { 'Content-Type': 'application/json' },
+   281→        body: JSON.stringify(payload),
+   282→      })
+   283→      const data = (await res.json().catch(() => null)) as ImportResult & {
+   284→        error?: string
+   285→      }
+   286→      if (!res.ok) throw new Error(data?.error ?? 'Gagal impor')
+   287→      return data
+   288→    },
+   289→    onSuccess: (data) => {
+   290→      setResult(data)
+   291→      setStep(3)
+   292→      qc.invalidateQueries({ queryKey: ['transactions'] })
+   293→      qc.invalidateQueries({ queryKey: ['summary'] })
+   294→      qc.invalidateQueries({ queryKey: ['categories'] })
+   295→      if (data.errors.length > 0) {
+   296→        toast.warning(`Berhasil impor ${data.imported}, ${data.errors.length} baris gagal`)
+   297→      } else {
+   298→        toast.success(`Berhasil mengimpor ${data.imported} transaksi`)
+   299→      }
+   300→    },
+   301→    onError: (e: Error) => toast.error(e.message),
+   302→  })
+   303→
+   304→  function doImport() {
+   305→    if (missingRequired.length > 0) {
+   306→      toast.error(
+   307→        'Lengkapi pemetaan kolom wajib: ' +
+   308→          missingRequired.map((f) => FIELD_LABELS[f]).join(', '),
+   309→      )
+   310→      return
+   311→    }
+   312→    const rows = rawRows.map((r) => {
+   313→      const dateRaw = mapping.date ? r[mapping.date] ?? '' : ''
+   314→      const category = mapping.category ? (r[mapping.category] ?? '').trim() : ''
+   315→      const group = mapping.group ? (r[mapping.group] ?? '').trim() : null
+   316→      const qty = mapping.qty ? normalizeInt(r[mapping.qty] ?? '') : 0
+   317→      const fee = mapping.fee ? normalizeInt(r[mapping.fee] ?? '') : 0
+   318→      const note = mapping.note ? (r[mapping.note] ?? '').trim() : null
+   319→      return {
+   320→        date: normalizeDate(dateRaw, dateFormat),
+   321→        category,
+   322→        group: group || null,
+   323→        qty,
+   324→        fee_per_unit: fee,
+   325→        note: note || null,
+   326→      }
+   327→    })
+   328→    importMutation.mutate({ rows, createMissing: true })
+   329→  }
+   330→
+   331→  function reset() {
+   332→    setStep(1)
+   333→    setFileName('')
+   334→    setRawRows([])
+   335→    setHeaders([])
+   336→    setMapping({})
+   337→    setDateFormat(null)
+   338→    setDetectedDateFormat(null)
+   339→    setResult(null)
+   340→    if (fileInputRef.current) fileInputRef.current.value = ''
+   341→  }
+   342→
+   343→  function setFieldMapping(f: Field, value: string) {
+   344→    setMapping((m) => {
+   345→      const next = { ...m }
+   346→      if (value === NO_MAPPING || value === '') delete next[f]
+   347→      else next[f] = value
+   348→      return next
+   349→    })
+   350→    // Re-detect date format when date column changes
+   351→    if (f === 'date') {
+   352→      const col = value && value !== NO_MAPPING ? value : undefined
+   353→      if (col) {
+   354→        const samples = rawRows
+   355→          .slice(0, 10)
+   356→          .map((r) => r[col])
+   357→          .filter(Boolean)
+   358→        const fmt = detectDateFormat(samples)
+   359→        setDetectedDateFormat(fmt)
+   360→        setDateFormat(fmt)
+   361→      } else {
+   362→        setDetectedDateFormat(null)
+   363→        setDateFormat(null)
+   364→      }
+   365→    }
+   366→  }
+   367→
+   368→  return (
+   369→    <div className="space-y-5">
+   370→      {/* Header */}
+   371→      <div>
+   372→        <h1 className="text-2xl md:text-3xl font-bold">Impor CSV</h1>
+   373→        <p className="text-sm text-muted-foreground mt-0.5">
+   374→          Impor banyak transaksi sekaligus dari file CSV
+   375→        </p>
+   376→      </div>
+   377→
+   378→      {/* Indikator langkah */}
+   379→      <div className="flex items-center gap-2">
+   380→        {([
+   381→          { n: 1 as const, label: 'Upload' },
+   382→          { n: 2 as const, label: 'Pemetaan' },
+   383→          { n: 3 as const, label: 'Konfirmasi' },
+   384→        ]).map((s, i) => (
+   385→          <div key={s.n} className="flex items-center gap-2 flex-1">
+   386→            <div
+   387→              className={cn(
+   388→                'flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex-1',
+   389→                step >= s.n
+   390→                  ? 'bg-primary text-primary-foreground'
+   391→                  : 'bg-secondary text-muted-foreground',
+   392→              )}
+   393→            >
+   394→              <span className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center text-xs font-bold shrink-0">
+   395→                {s.n}
+   396→              </span>
+   397→              <span className="hidden sm:inline">{s.label}</span>
+   398→            </div>
+   399→            {i < 2 && (
+   400→              <div
+   401→                className={cn(
+   402→                  'h-0.5 w-6 transition-colors',
+   403→                  step > s.n ? 'bg-primary' : 'bg-border',
+   404→                )}
+   405→              />
+   406→            )}
+   407→          </div>
+   408→        ))}
+   409→      </div>
+   410→
+   411→      {/* Step 1: Upload */}
+   412→      {step === 1 && (
+   413→        <Card className="p-5 md:p-7">
+   414→          <div className="text-center">
+   415→            <div className="w-16 h-16 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mx-auto mb-3">
+   416→              <FileUp className="w-8 h-8" />
+   417→            </div>
+   418→            <h2 className="font-bold text-lg">Unggah File CSV</h2>
+   419→            <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
+   420→              Pilih file CSV berisi transaksi. Header kolom akan dideteksi
+   421→              otomatis pada langkah berikutnya.
+   422→            </p>
+   423→          </div>
+   424→
+   425→          <div
+   426→            onDragOver={(e) => {
+   427→              e.preventDefault()
+   428→              setDragOver(true)
+   429→            }}
+   430→            onDragLeave={() => setDragOver(false)}
+   431→            onDrop={(e) => {
+   432→              e.preventDefault()
+   433→              setDragOver(false)
+   434→              const f = e.dataTransfer.files?.[0]
+   435→              if (f) handleFile(f)
+   436→            }}
+   437→            onClick={() => fileInputRef.current?.click()}
+   438→            onKeyDown={(e) => {
+   439→              if (e.key === 'Enter' || e.key === ' ') {
+   440→                e.preventDefault()
+   441→                fileInputRef.current?.click()
+   442→              }
+   443→            }}
+   444→            role="button"
+   445→            tabIndex={0}
+   446→            aria-label="Unggah file CSV"
+   447→            className={cn(
+   448→              'mt-5 border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors',
+   449→              dragOver
+   450→                ? 'border-primary bg-primary/5'
+   451→                : 'border-border hover:border-primary/50 hover:bg-secondary/50',
+   452→            )}
+   453→          >
+   454→            <Upload className="w-10 h-10 mx-auto mb-2 text-muted-foreground" />
+   455→            <p className="font-medium">
+   456→              Tarik file ke sini atau klik untuk memilih
+   457→            </p>
+   458→            <p className="text-xs text-muted-foreground mt-1">
+   459→              Format .csv · contoh sudah disediakan
+   460→            </p>
+   461→            <input
+   462→              ref={fileInputRef}
+   463→              type="file"
+   464→              accept=".csv,text/csv"
+   465→              className="hidden"
+   466→              onChange={(e) => {
+   467→                const f = e.target.files?.[0]
+   468→                if (f) handleFile(f)
+   469→              }}
+   470→            />
+   471→          </div>
+   472→
+   473→          <div className="mt-4 flex justify-center">
+   474→            <Button onClick={downloadSample} variant="outline" className="h-11">
+   475→              <Download className="w-4 h-4" /> Unduh Contoh CSV
+   476→            </Button>
+   477→          </div>
+   478→
+   479→          <div className="mt-5 rounded-xl bg-secondary/60 p-4 text-sm">
+   480→            <p className="font-semibold mb-1.5 flex items-center gap-1.5">
+   481→              <FileSpreadsheet className="w-4 h-4 text-primary" /> Format CSV yang diharapkan
+   482→            </p>
+   483→            <p className="text-muted-foreground">
+   484→              Baris pertama harus berisi nama kolom. Contoh kolom yang dikenali:
+   485→            </p>
+   486→            <div className="flex flex-wrap gap-1.5 mt-2">
+   487→              {['Tanggal', 'Kategori', 'Grup', 'Jumlah', 'Fee', 'Catatan'].map(
+   488→                (c) => (
+   489→                  <Badge key={c} variant="secondary" className="font-mono">
+   490→                    {c}
+   491→                  </Badge>
+   492→                ),
+   493→              )}
+   494→            </div>
+   495→            <p className="text-muted-foreground mt-2 text-xs">
+   496→              Sinonim yang dikenali: Tanggal → Date/Tgl, Kategori →
+   497→              Jenis/Layanan, Jumlah → Qty/IDPEL, Fee → Admin, Catatan → Note/Ket,
+   498→              Grup → Group.
+   499→            </p>
+   500→          </div>
+   501→        </Card>
+   502→      )}
+   503→
+   504→      {/* Step 2: Pemetaan */}
+   505→      {step === 2 && (
+   506→        <div className="space-y-5">
+   507→          <Card className="p-5">
+   508→            <div className="flex items-start justify-between gap-3 mb-4">
+   509→              <div className="min-w-0">
+   510→                <h2 className="font-bold text-lg">Pemetaan Kolom</h2>
+   511→                <p className="text-sm text-muted-foreground truncate">
+   512→                  File: <span className="font-medium text-foreground">{fileName}</span> ·{' '}
+   513→                  {rawRows.length} baris terdeteksi
+   514→                </p>
+   515→              </div>
+   516→              <Button variant="ghost" size="sm" onClick={reset} className="shrink-0">
+   517→                <X className="w-4 h-4" /> Ganti File
+   518→              </Button>
+   519→            </div>
+   520→
+   521→            {missingRequired.length > 0 && (
+   522→              <div className="mb-4 rounded-lg bg-destructive/10 border border-destructive/30 p-3 text-sm text-destructive flex items-start gap-2">
+   523→                <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+   524→                <span>
+   525→                  Kolom wajib belum dipetakan:{' '}
+   526→                  <strong>
+   527→                    {missingRequired.map((f) => FIELD_LABELS[f]).join(', ')}
+   528→                  </strong>
+   529→                </span>
+   530→              </div>
+   531→            )}
+   532→
+   533→            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+   534→              {(
+   535→                ['date', 'category', 'group', 'qty', 'fee', 'note'] as Field[]
+   536→              ).map((f) => (
+   537→                <div key={f} className="space-y-1.5">
+   538→                  <Label className="text-sm font-medium flex items-center gap-1.5">
+   539→                    {FIELD_LABELS[f]}
+   540→                    {FIELD_REQUIRED[f] ? (
+   541→                      <span className="text-destructive">*</span>
+   542→                    ) : (
+   543→                      <span className="text-xs text-muted-foreground font-normal">
+   544→                        (opsional)
+   545→                      </span>
+   546→                    )}
+   547→                  </Label>
+   548→                  <Select
+   549→                    value={mapping[f] ?? NO_MAPPING}
+   550→                    onValueChange={(v) => setFieldMapping(f, v)}
+   551→                  >
+   552→                    <SelectTrigger className="h-12 w-full">
+   553→                      <SelectValue placeholder="Pilih kolom CSV..." />
+   554→                    </SelectTrigger>
+   555→                    <SelectContent className="max-h-72">
+   556→                      {!FIELD_REQUIRED[f] && (
+   557→                        <SelectItem value={NO_MAPPING}>— Tidak Dipakai —</SelectItem>
+   558→                      )}
+   559→                      {headers.map((h) => (
+   560→                        <SelectItem key={h} value={h}>
+   561→                          {h}
+   562→                        </SelectItem>
+   563→                      ))}
+   564→                    </SelectContent>
+   565→                  </Select>
+   566→                  <p className="text-xs text-muted-foreground">{FIELD_HINTS[f]}</p>
+   567→                </div>
+   568→              ))}
+   569→            </div>
+   570→
+   571→            {/* Deteksi format tanggal */}
+   572→            {mapping.date && (
+   573→              <div className="mt-5 rounded-xl bg-secondary/60 p-4">
+   574→                <p className="text-sm font-medium">Format Tanggal</p>
+   575→                {detectedDateFormat ? (
+   576→                  <p className="text-sm text-success mt-1 flex items-center gap-1.5 flex-wrap">
+   577→                    <CheckCircle2 className="w-4 h-4" />
+   578→                    Terdeteksi otomatis:{' '}
+   579→                    <code className="bg-background px-1.5 py-0.5 rounded text-xs font-mono">
+   580→                      {detectedDateFormat}
+   581→                    </code>
+   582→                    <span className="text-xs text-muted-foreground">
+   583→                      (ubah bila salah)
+   584→                    </span>
+   585→                  </p>
+   586→                ) : (
+   587→                  <p className="text-sm text-warning mt-1 flex items-center gap-1.5">
+   588→                    <AlertTriangle className="w-4 h-4" />
+   589→                    Format tanggal tidak dikenali otomatis. Pilih manual di bawah.
+   590→                  </p>
+   591→                )}
+   592→                <Select
+   593→                  value={dateFormat ?? ''}
+   594→                  onValueChange={(v) => setDateFormat(v as DateFormat)}
+   595→                >
+   596→                  <SelectTrigger className="h-10 w-full mt-2">
+   597→                    <SelectValue placeholder="Pilih format tanggal..." />
+   598→                  </SelectTrigger>
+   599→                  <SelectContent>
+   600→                    <SelectItem value="YYYY-MM-DD">
+   601→                      YYYY-MM-DD (contoh: 2026-06-23)
+   602→                    </SelectItem>
+   603→                    <SelectItem value="DD/MM/YYYY">
+   604→                      DD/MM/YYYY (contoh: 23/06/2026)
+   605→                    </SelectItem>
+   606→                    <SelectItem value="DD-MM-YYYY">
+   607→                      DD-MM-YYYY (contoh: 23-06-2026)
+   608→                    </SelectItem>
+   609→                  </SelectContent>
+   610→                </Select>
+   611→              </div>
+   612→            )}
+   613→          </Card>
+   614→
+   615→          {/* Pratinjau data */}
+   616→          <Card className="p-5">
+   617→            <h2 className="font-bold text-lg mb-1">Pratinjau Data</h2>
+   618→            <p className="text-sm text-muted-foreground mb-3">
+   619→              8 baris pertama · Total = Jumlah × Fee per Unit
+   620→            </p>
+   621→            <div className="overflow-x-auto">
+   622→              <Table>
+   623→                <TableHeader>
+   624→                  <TableRow>
+   625→                    <TableHead>Tanggal</TableHead>
+   626→                    <TableHead>Kategori</TableHead>
+   627→                    <TableHead className="hidden sm:table-cell">Grup</TableHead>
+   628→                    <TableHead className="text-right">Jumlah</TableHead>
+   629→                    <TableHead className="text-right">Fee</TableHead>
+   630→                    <TableHead className="text-right">Total</TableHead>
+   631→                    <TableHead className="hidden md:table-cell">Catatan</TableHead>
+   632→                  </TableRow>
+   633→                </TableHeader>
+   634→                <TableBody>
+   635→                  {previewRows.map((r, i) => (
+   636→                    <TableRow key={i}>
+   637→                      <TableCell className="font-mono text-xs">
+   638→                        {r.date || (
+   639→                          <span className="text-destructive">—</span>
+   640→                        )}
+   641→                      </TableCell>
+   642→                      <TableCell>
+   643→                        {r.category || (
+   644→                          <span className="text-destructive">—</span>
+   645→                        )}
+   646→                      </TableCell>
+   647→                      <TableCell className="hidden sm:table-cell text-muted-foreground">
+   648→                        {r.group || '—'}
+   649→                      </TableCell>
+   650→                      <TableCell className="text-right tabular-nums">
+   651→                        {r.qty || (
+   652→                          <span className="text-destructive">0</span>
+   653→                        )}
+   654→                      </TableCell>
+   655→                      <TableCell className="text-right tabular-nums">
+   656→                        {formatRupiah(r.fee)}
+   657→                      </TableCell>
+   658→                      <TableCell className="text-right tabular-nums font-semibold">
+   659→                        {formatRupiah(r.total)}
+   660→                      </TableCell>
+   661→                      <TableCell className="hidden md:table-cell text-muted-foreground text-xs">
+   662→                        {r.note || '—'}
+   663→                      </TableCell>
+   664→                    </TableRow>
+   665→                  ))}
+   666→                  {previewRows.length === 0 && (
+   667→                    <TableRow>
+   668→                      <TableCell
+   669→                        colSpan={7}
+   670→                        className="text-center text-muted-foreground py-6"
+   671→                      >
+   672→                        Tidak ada baris untuk dipratinjau.
+   673→                      </TableCell>
+   674→                    </TableRow>
+   675→                  )}
+   676→                </TableBody>
+   677→              </Table>
+   678→            </div>
+   679→          </Card>
+   680→
+   681→          <div className="flex flex-col sm:flex-row gap-2">
+   682→            <Button
+   683→              variant="outline"
+   684→              onClick={reset}
+   685→              className="h-12 px-5"
+   686→            >
+   687→              <ArrowLeft className="w-4 h-4" /> Mulai Lagi
+   688→            </Button>
+   689→            <Button
+   690→              onClick={doImport}
+   691→              disabled={missingRequired.length > 0 || importMutation.isPending}
+   692→              className="h-12 flex-1 font-semibold text-base"
+   693→            >
+   694→              {importMutation.isPending ? (
+   695→                'Mengimpor...'
+   696→              ) : (
+   697→                <>
+   698→                  Impor {rawRows.length} Transaksi{' '}
+   699→                  <ArrowRight className="w-4 h-4" />
+   700→                </>
+   701→              )}
+   702→            </Button>
+   703→          </div>
+   704→        </div>
+   705→      )}
+   706→
+   707→      {/* Step 3: Hasil */}
+   708→      {step === 3 && result && (
+   709→        <Card className="p-5 md:p-7">
+   710→          <div className="text-center">
+   711→            <div
+   712→              className={cn(
+   713→                'w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-3',
+   714→                result.errors.length > 0
+   715→                  ? 'bg-warning/15 text-warning'
+   716→                  : 'bg-success/15 text-success',
+   717→              )}
+   718→            >
+   719→              {result.errors.length > 0 ? (
+   720→                <AlertTriangle className="w-8 h-8" />
+   721→              ) : (
+   722→                <CheckCircle2 className="w-8 h-8" />
+   723→              )}
+   724→            </div>
+   725→            <h2 className="font-bold text-xl">Impor Selesai</h2>
+   726→            <p className="text-sm text-muted-foreground mt-1">
+   727→              Berhasil mengimpor{' '}
+   728→              <span className="font-bold text-success">{result.imported}</span>{' '}
+   729→              transaksi
+   730→            </p>
+   731→          </div>
+   732→
+   733→          {result.createdCategories.length > 0 && (
+   734→            <div className="mt-5 rounded-xl bg-primary/10 p-4">
+   735→              <p className="text-sm font-medium flex items-center gap-1.5 mb-2">
+   736→                <CheckCircle2 className="w-4 h-4 text-primary" />
+   737→                {result.createdCategories.length} kategori baru dibuat:
+   738→              </p>
+   739→              <div className="flex flex-wrap gap-1.5">
+   740→                {result.createdCategories.map((c) => (
+   741→                  <Badge key={c} variant="secondary">
+   742→                    {c}
+   743→                  </Badge>
+   744→                ))}
+   745→              </div>
+   746→            </div>
+   747→          )}
+   748→
+   749→          {result.errors.length > 0 && (
+   750→            <div className="mt-5 rounded-xl bg-destructive/10 border border-destructive/30 p-4">
+   751→              <p className="text-sm font-medium text-destructive flex items-center gap-1.5 mb-2">
+   752→                <AlertTriangle className="w-4 h-4" />
+   753→                {result.errors.length} baris gagal diimpor:
+   754→              </p>
+   755→              <div className="max-h-60 overflow-y-auto scroll-thin space-y-1 pr-1">
+   756→                {result.errors.map((e, i) => (
+   757→                  <div
+   758→                    key={i}
+   759→                    className="text-sm flex items-start gap-2 py-1 border-b border-destructive/20 last:border-0"
+   760→                  >
+   761→                    <Badge
+   762→                      variant="outline"
+   763→                      className="text-destructive border-destructive/40 shrink-0"
+   764→                    >
+   765→                      Baris {e.row}
+   766→                    </Badge>
+   767→                    <span className="text-destructive/90">{e.error}</span>
+   768→                  </div>
+   769→                ))}
+   770→              </div>
+   771→            </div>
+   772→          )}
+   773→
+   774→          <div className="mt-6 flex flex-col sm:flex-row gap-2 justify-center">
+   775→            <Button onClick={reset} className="h-12 px-6 font-semibold">
+   776→              <RotateCcw className="w-4 h-4" /> Impor Lagi
+   777→            </Button>
+   778→          </div>
+   779→        </Card>
+   780→      )}
+   781→    </div>
+   782→  )
+   783→}
+   784→

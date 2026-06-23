@@ -18,7 +18,8 @@ import { formatRupiah, formatMonthLabel } from '@/lib/format'
 
 export interface MonthlyTrendPoint {
   ym: string
-  total: number
+  admin: number
+  omzet: number
   expenses: number
 }
 
@@ -33,10 +34,13 @@ function compactRupiah(v: number): string {
 }
 
 export function MonthlyChart({ data, expensesEnabled }: { data: MonthlyTrendPoint[]; expensesEnabled: boolean }) {
+  // Hanya tampilkan bar Omzet jika ada data omzet > 0 (nominal tagihan pernah diisi)
+  const hasOmzet = data.some((d) => d.omzet > d.admin)
   const chartData = data.map((d) => ({
     name: formatMonthLabel(d.ym),
-    Pendapatan: d.total,
-    Pengeluaran: d.expenses,
+    'Pendapatan Bersih': d.admin,
+    ...(hasOmzet ? { Omzet: d.omzet } : {}),
+    ...(expensesEnabled ? { Pengeluaran: d.expenses } : {}),
   }))
 
   return (
@@ -70,10 +74,11 @@ export function MonthlyChart({ data, expensesEnabled }: { data: MonthlyTrendPoin
             }}
             formatter={(value, name) => [formatRupiah(Number(value)), String(name)]}
           />
-          {expensesEnabled && (
-            <Legend wrapperStyle={{ fontSize: 13, paddingTop: 8 }} iconType="circle" />
+          <Legend wrapperStyle={{ fontSize: 13, paddingTop: 8 }} iconType="circle" />
+          <Bar dataKey="Pendapatan Bersih" className="fill-primary" radius={[4, 4, 0, 0]} maxBarSize={48} />
+          {hasOmzet && (
+            <Bar dataKey="Omzet" fill="#0ea5e9" radius={[4, 4, 0, 0]} maxBarSize={48} />
           )}
-          <Bar dataKey="Pendapatan" className="fill-primary" radius={[4, 4, 0, 0]} maxBarSize={48} />
           {expensesEnabled && (
             <Bar dataKey="Pengeluaran" className="fill-destructive" radius={[4, 4, 0, 0]} maxBarSize={48} />
           )}

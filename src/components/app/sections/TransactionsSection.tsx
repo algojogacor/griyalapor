@@ -17,7 +17,7 @@ import { cn } from '@/lib/utils'
 
 interface Category { id: number; name: string; group_name: string | null; default_fee: number }
 interface Txn {
-  id: number; date: string; qty: number; fee_per_unit: number; total: number; note: string | null
+  id: number; date: string; qty: number; fee_per_unit: number; total: number; bill_per_unit: number; note: string | null
   category_name: string; category_group: string | null
 }
 
@@ -31,6 +31,7 @@ export function TransactionsSection() {
   const [categoryId, setCategoryId] = useState<string>('')
   const [qty, setQty] = useState('')
   const [fee, setFee] = useState('')
+  const [bill, setBill] = useState('')
   const [note, setNote] = useState('')
 
   function selectCategory(id: string) {
@@ -39,7 +40,11 @@ export function TransactionsSection() {
     if (cat) setFee(String(cat.default_fee))
   }
 
-  const total = (parseRupiahInput(qty) || 0) * (parseRupiahInput(fee) || 0)
+  const q = parseRupiahInput(qty) || 0
+  const f = parseRupiahInput(fee) || 0
+  const b = parseRupiahInput(bill) || 0
+  const pendapatanBersih = q * f   // fee admin yang didapat
+  const omzet = q * (b + f)       // total uang dari pembeli (jika nominal diisi)
 
   const addMutation = useMutation({
     mutationFn: async (payload: Record<string, unknown>) => {
@@ -51,7 +56,7 @@ export function TransactionsSection() {
       toast.success('Transaksi berhasil dicatat')
       qc.invalidateQueries({ queryKey: ['transactions'] })
       qc.invalidateQueries({ queryKey: ['summary'] })
-      setDate(todayISO()); setCategoryId(''); setQty(''); setFee(''); setNote('')
+      setDate(todayISO()); setCategoryId(''); setQty(''); setFee(''); setBill(''); setNote('')
       setOpen(false)
     },
     onError: (e: Error) => toast.error(e.message),
@@ -59,9 +64,16 @@ export function TransactionsSection() {
 
   function submit() {
     if (!categoryId) return toast.error('Pilih kategori dulu')
-    const q = parseRupiahInput(qty)
-    if (q <= 0) return toast.error('Jumlah harus lebih dari 0')
-    addMutation.mutate({ category_id: Number(categoryId), date, qty: q, fee_per_unit: parseRupiahInput(fee), note: note.trim() || null })
+    const qVal = parseRupiahInput(qty)
+    if (qVal <= 0) return toast.error('Jumlah harus lebih dari 0')
+    addMutation.mutate({
+      category_id: Number(categoryId),
+      date,
+      qty: qVal,
+      fee_per_unit: parseRupiahInput(fee),
+      bill_per_unit: parseRupiahInput(bill),
+      note: note.trim() || null,
+    })
   }
 
   return (
@@ -119,19 +131,37 @@ export function TransactionsSection() {
                 <p className="text-xs text-muted-foreground">Jumlah IDPEL/pelanggan</p>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="fee" className="text-sm font-medium">Fee per Unit (Rp)</Label>
+                <Label htmlFor="fee" className="text-sm font-medium">Fee per Pelanggan (Rp)</Label>
                 <Input
                   id="fee" inputMode="numeric" value={fee}
                   onChange={(e) => setFee(formatNum(e.target.value))}
                   placeholder="3000" className="h-14 text-2xl font-bold text-center tabular-nums"
                 />
-                <p className="text-xs text-muted-foreground">Otomatis dari kategori, bisa diubah</p>
+                <p className="text-xs text-muted-foreground">Biaya admin. Otomatis dari kategori</p>
               </div>
             </div>
 
-            <div className="rounded-xl bg-primary/10 p-4 flex items-center justify-between">
-              <span className="font-medium">Total pendapatan</span>
-              <span className="text-2xl font-bold tabular-nums text-primary">{formatRupiah(total)}</span>
+            <div className="space-y-1.5">
+              <Label htmlFor="bill" className="text-sm font-medium">Nominal Tagihan per Pelanggan (opsional)</Label>
+              <Input
+                id="bill" inputMode="numeric" value={bill}
+                onChange={(e) => setBill(formatNum(e.target.value))}
+                placeholder="contoh: 200000" className="h-12 text-lg font-semibold text-center tabular-nums"
+              />
+              <p className="text-xs text-muted-foreground">Isi untuk menghitung omzet/kotor (uang pembeli). Boleh dikosongkan</p>
+            </div>
+
+            <div className="rounded-xl bg-primary/10 p-4 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="font-medium">Pendapatan Bersih (fee admin)</span>
+                <span className="text-2xl font-bold tabular-nums text-primary">{formatRupiah(pendapatanBersih)}</span>
+              </div>
+              {b > 0 && (
+                <div className="flex items-center justify-between text-sm text-muted-foreground pt-1 border-t border-primary/20">
+                  <span>Omzet (uang dari pembeli)</span>
+                  <span className="font-semibold tabular-nums">{formatRupiah(omzet)}</span>
+                </div>
+              )}
             </div>
 
             <div className="space-y-1.5">
@@ -190,7 +220,9 @@ function TransactionList() {
     onError: () => toast.error('Gagal menghapus transaksi'),
   })
 
-  const grandTotal = filtered.reduce((s, t) => s + t.total, 0)
+  const grandAdmin = filtered.reduce((s, t) => s + t.total, 0)
+  const grandOmzet = filtered.reduce((s, t) => s + (t.qty * (t.bill_per_unit + t.fee_per_unit)), 0)
+  const hasOmzet = filtered.some((t) => t.bill_per_unit > 0)
 
   return (
     <Card className="p-5">
@@ -217,32 +249,47 @@ function TransactionList() {
       ) : (
         <>
           <div className="space-y-1.5 max-h-[28rem] overflow-y-auto scroll-thin pr-1">
-            {filtered.map((t) => (
-              <div key={t.id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-secondary/60 transition-colors group">
-                <div className="w-11 h-11 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-bold shrink-0">
-                  {t.qty}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="font-medium truncate">{t.category_name}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {formatShortDate(t.date)} · {t.qty} × {formatRupiah(t.fee_per_unit)}
-                    {t.note ? ` · ${t.note}` : ''}
+            {filtered.map((t) => {
+              const omzet = t.qty * (t.bill_per_unit + t.fee_per_unit)
+              return (
+                <div key={t.id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-secondary/60 transition-colors group">
+                  <div className="w-11 h-11 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-bold shrink-0">
+                    {t.qty}
                   </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="font-medium truncate">{t.category_name}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {formatShortDate(t.date)} · {t.qty} × {formatRupiah(t.fee_per_unit)}
+                      {t.bill_per_unit > 0 ? ` (tagihan ${formatRupiah(t.bill_per_unit)})` : ''}
+                      {t.note ? ` · ${t.note}` : ''}
+                    </div>
+                    {t.bill_per_unit > 0 && (
+                      <div className="text-[11px] text-muted-foreground/80 mt-0.5">Omzet {formatRupiah(omzet)}</div>
+                    )}
+                  </div>
+                  <div className="font-semibold text-success tabular-nums shrink-0">+{formatRupiah(t.total)}</div>
+                  <button
+                    onClick={() => setDeleteId(t.id)}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity p-2 text-muted-foreground hover:text-destructive"
+                    aria-label="Hapus transaksi"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
-                <div className="font-semibold text-success tabular-nums shrink-0">+{formatRupiah(t.total)}</div>
-                <button
-                  onClick={() => setDeleteId(t.id)}
-                  className="opacity-0 group-hover:opacity-100 transition-opacity p-2 text-muted-foreground hover:text-destructive"
-                  aria-label="Hapus transaksi"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            ))}
+              )
+            })}
           </div>
-          <div className="mt-3 pt-3 border-t flex items-center justify-between font-semibold">
-            <span>Total ({filtered.length} transaksi)</span>
-            <span className="tabular-nums text-primary text-lg">{formatRupiah(grandTotal)}</span>
+          <div className="mt-3 pt-3 border-t space-y-1">
+            <div className="flex items-center justify-between font-semibold">
+              <span>Total Pendapatan Bersih ({filtered.length} transaksi)</span>
+              <span className="tabular-nums text-primary text-lg">{formatRupiah(grandAdmin)}</span>
+            </div>
+            {hasOmzet && (
+              <div className="flex items-center justify-between text-sm text-muted-foreground">
+                <span>Total Omzet (uang pembeli)</span>
+                <span className="tabular-nums font-medium">{formatRupiah(grandOmzet)}</span>
+              </div>
+            )}
           </div>
         </>
       )}

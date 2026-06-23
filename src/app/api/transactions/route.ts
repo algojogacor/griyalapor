@@ -28,7 +28,7 @@ export async function GET(req: Request) {
   }
   const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : ''
 
-  let sql = `SELECT t.id, t.category_id, t.date, t.qty, t.fee_per_unit, t.total, t.note, t.created_at,
+  let sql = `SELECT t.id, t.category_id, t.date, t.qty, t.fee_per_unit, t.total, t.bill_per_unit, t.note, t.created_at,
                     c.name as category_name, c.group_name as category_group
              FROM transactions t JOIN categories c ON c.id = t.category_id
              ${where} ORDER BY t.date DESC, t.id DESC`
@@ -57,6 +57,7 @@ export async function POST(req: Request) {
   const date = String(body.date ?? '').trim()
   const qty = Math.max(0, Math.floor(Number(body.qty ?? 0) || 0))
   const feePerUnit = Math.max(0, Math.floor(Number(body.fee_per_unit ?? 0) || 0))
+  const billPerUnit = Math.max(0, Math.floor(Number(body.bill_per_unit ?? 0) || 0))
   const note = body.note ? String(body.note).trim() : null
 
   if (!categoryId) return errorJson('Kategori wajib dipilih', 400)
@@ -64,12 +65,12 @@ export async function POST(req: Request) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return errorJson('Format tanggal harus YYYY-MM-DD', 400)
   if (qty <= 0) return errorJson('Jumlah (qty) harus > 0', 400)
 
-  const total = qty * feePerUnit
+  const total = qty * feePerUnit // pendapatan bersih (fee admin)
 
   const res = await db.execute({
-    sql: `INSERT INTO transactions (category_id, date, qty, fee_per_unit, total, note)
-          VALUES (?, ?, ?, ?, ?, ?) RETURNING *`,
-    args: [categoryId, date, qty, feePerUnit, total, note],
+    sql: `INSERT INTO transactions (category_id, date, qty, fee_per_unit, total, bill_per_unit, note)
+          VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *`,
+    args: [categoryId, date, qty, feePerUnit, total, billPerUnit, note],
   })
   return json({ transaction: res.rows[0] }, 201)
 }

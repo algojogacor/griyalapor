@@ -42,19 +42,23 @@ export async function GET(req: Request) {
 
   // transactions
   const res = await db.execute({
-    sql: `SELECT t.date, c.name as category, c.group_name as "group", t.qty, t.fee_per_unit, t.total, t.note
+    sql: `SELECT t.date, c.name as category, c.group_name as "group", t.qty, t.bill_per_unit, t.fee_per_unit, t.total,
+                 (t.qty * (t.bill_per_unit + t.fee_per_unit)) as omzet, t.note
           FROM transactions t JOIN categories c ON c.id = t.category_id
           WHERE ${cond} ORDER BY t.date, t.id`,
     args: [from, to],
   })
-  const rows: string[][] = [['Tanggal', 'Kategori', 'Grup', 'Jumlah', 'Fee/Unit', 'Total', 'Catatan']]
-  let grandTotal = 0
+  const rows: string[][] = [['Tanggal', 'Kategori', 'Grup', 'Jumlah', 'Tagihan/Unit', 'Fee/Unit', 'Pendapatan Bersih', 'Omzet', 'Catatan']]
+  let grandAdmin = 0
+  let grandOmzet = 0
   for (const r of res.rows) {
-    const x = r as { date: string; category: string; group: string | null; qty: number; fee_per_unit: number; total: number; note: string | null }
-    grandTotal += x.total
-    rows.push([x.date, x.category, x.group ?? '', String(x.qty), String(x.fee_per_unit), String(x.total), x.note ?? ''])
+    const x = r as { date: string; category: string; group: string | null; qty: number; bill_per_unit: number; fee_per_unit: number; total: number; omzet: number; note: string | null }
+    grandAdmin += x.total
+    grandOmzet += x.omzet
+    rows.push([x.date, x.category, x.group ?? '', String(x.qty), String(x.bill_per_unit), String(x.fee_per_unit), String(x.total), String(x.omzet), x.note ?? ''])
   }
-  rows.push(['', '', '', '', '', `TOTAL`, String(grandTotal)])
+  rows.push(['', '', '', '', '', '', `TOTAL BERSIH`, String(grandAdmin)])
+  rows.push(['', '', '', '', '', '', `TOTAL OMZET`, String(grandOmzet)])
 
   let csv = rows.map((r) => r.map(csvEscape).join(',')).join('\n')
 
@@ -73,7 +77,7 @@ export async function GET(req: Request) {
     }
     expRows.push(['', 'TOTAL', String(expTotal)])
     csv += expRows.map((r) => r.map(csvEscape).join(',')).join('\n')
-    csv += `\n\nLABA BERSIH,${grandTotal - expTotal}`
+    csv += `\n\nLABA OPERASIONAL (Pendapatan Bersih - Pengeluaran),${grandAdmin - expTotal}`
   }
 
   return new Response(csv, {

@@ -9,6 +9,7 @@ interface ImportRow {
   group?: string | null
   qty: number
   fee_per_unit: number
+  bill_per_unit?: number
   note?: string | null
 }
 
@@ -42,6 +43,7 @@ export async function POST(req: Request) {
       const catName = String(row.category ?? '').trim()
       const qty = Math.max(0, Math.floor(Number(row.qty ?? 0) || 0))
       const fee = Math.max(0, Math.floor(Number(row.fee_per_unit ?? 0) || 0))
+      const bill = Math.max(0, Math.floor(Number(row.bill_per_unit ?? 0) || 0))
       const note = row.note ? String(row.note).trim().slice(0, 200) : null
 
       if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
@@ -66,8 +68,8 @@ export async function POST(req: Request) {
 
       const total = qty * fee
       batchStmts.push({
-        sql: 'INSERT INTO transactions (category_id, date, qty, fee_per_unit, total, note) VALUES (?, ?, ?, ?, ?, ?)',
-        args: [cat.id, date, qty, fee, total, note],
+        sql: 'INSERT INTO transactions (category_id, date, qty, fee_per_unit, total, bill_per_unit, note) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        args: [cat.id, date, qty, fee, total, bill, note],
       })
       inserted.push(i + 1)
     } catch (e) {

@@ -12,13 +12,13 @@ import { cn } from '@/lib/utils'
 
 interface Summary {
   ranges: { today: string; week: { from: string; to: string }; month: { from: string; to: string } }
-  today: { count: number; total: number }
-  week: { count: number; total: number }
-  month: { count: number; total: number }
+  today: { count: number; admin: number; omzet: number; bill: number }
+  week: { count: number; admin: number; omzet: number; bill: number }
+  month: { count: number; admin: number; omzet: number; bill: number }
   expenses: { today: { count: number; total: number }; week: { count: number; total: number }; month: { count: number; total: number } }
-  breakdown: { category_id: number; name: string; group: string | null; count: number; total: number }[]
+  breakdown: { category_id: number; name: string; group: string | null; count: number; admin: number; omzet: number }[]
   recentTransactions: {
-    id: number; date: string; qty: number; fee_per_unit: number; total: number;
+    id: number; date: string; qty: number; fee_per_unit: number; total: number; bill_per_unit: number;
     note: string | null; category_name: string; category_group: string | null
   }[]
 }
@@ -74,18 +74,23 @@ export function DashboardSection() {
       {/* Hero card hari ini */}
       <Card className="p-5 md:p-7 bg-gradient-to-br from-primary to-primary/80 text-primary-foreground border-0 shadow-md">
         <div className="flex items-start justify-between gap-3">
-          <div>
+          <div className="min-w-0">
             <p className="text-primary-foreground/80 text-sm font-medium flex items-center gap-1.5">
-              <Wallet className="w-4 h-4" /> Pendapatan Hari Ini
+              <Wallet className="w-4 h-4" /> Pendapatan Hari Ini (fee admin)
             </p>
             <div className="text-3xl md:text-5xl font-bold mt-1 tracking-tight tabular-nums">
-              {isLoading ? <Skeleton className="h-12 w-48 bg-white/20" /> : formatRupiah(data?.today.total)}
+              {isLoading ? <Skeleton className="h-12 w-48 bg-white/20" /> : formatRupiah(data?.today.admin)}
             </div>
             <p className="text-primary-foreground/80 text-sm mt-2">
               {data?.today.count ?? 0} transaksi tercatat
             </p>
+            {data && data.today.omzet > data.today.admin && (
+              <p className="text-primary-foreground/70 text-xs mt-1">
+                Omzet (uang pembeli): {formatRupiah(data.today.omzet)}
+              </p>
+            )}
           </div>
-          <div className="hidden sm:flex w-14 h-14 rounded-2xl bg-white/15 items-center justify-center">
+          <div className="hidden sm:flex w-14 h-14 rounded-2xl bg-white/15 items-center justify-center shrink-0">
             <TrendingUp className="w-7 h-7" />
           </div>
         </div>
@@ -109,9 +114,9 @@ export function DashboardSection() {
 
       {/* Stat cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <StatCard label="Hari Ini" value={data?.today.total} count={data?.today.count} loading={isLoading} highlight />
-        <StatCard label="Minggu Ini" value={data?.week.total} count={data?.week.count} loading={isLoading} />
-        <StatCard label="Bulan Ini" value={data?.month.total} count={data?.month.count} loading={isLoading} />
+        <StatCard label="Hari Ini" value={data?.today.admin} omzet={data?.today.omzet} count={data?.today.count} loading={isLoading} highlight />
+        <StatCard label="Minggu Ini" value={data?.week.admin} omzet={data?.week.omzet} count={data?.week.count} loading={isLoading} />
+        <StatCard label="Bulan Ini" value={data?.month.admin} omzet={data?.month.omzet} count={data?.month.count} loading={isLoading} />
       </div>
 
       {expensesEnabled && (
@@ -157,7 +162,7 @@ export function DashboardSection() {
                     <div className="font-medium truncate">{b.name}</div>
                     <div className="text-xs text-muted-foreground">{b.group ?? 'Lainnya'} · {b.count} transaksi</div>
                   </div>
-                  <div className="font-semibold tabular-nums shrink-0 ml-3">{formatRupiah(b.total)}</div>
+                  <div className="font-semibold tabular-nums shrink-0 ml-3">{formatRupiah(b.admin)}</div>
                 </div>
               ))}
             </div>
@@ -206,12 +211,15 @@ export function DashboardSection() {
   )
 }
 
-function StatCard({ label, value, count, loading, highlight }: { label: string; value?: number; count?: number; loading?: boolean; highlight?: boolean }) {
+function StatCard({ label, value, omzet, count, loading, highlight }: { label: string; value?: number; omzet?: number; count?: number; loading?: boolean; highlight?: boolean }) {
+  const showOmzet = omzet !== undefined && value !== undefined && omzet > value
   return (
     <Card className={cn('p-4', highlight && 'ring-1 ring-primary/30')}>
       <p className="text-sm text-muted-foreground">{label}</p>
       <div className="text-2xl font-bold mt-1 tabular-nums">{loading ? <Skeleton className="h-8 w-28" /> : formatRupiah(value)}</div>
-      <p className="text-xs text-muted-foreground mt-0.5">{count ?? 0} transaksi</p>
+      <p className="text-xs text-muted-foreground mt-0.5">
+        {count ?? 0} transaksi{showOmzet ? ` · Omzet ${formatRupiah(omzet)}` : ''}
+      </p>
     </Card>
   )
 }
