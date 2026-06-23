@@ -40,6 +40,23 @@ async function migrate() {
   } else {
     console.log('ℹ Kolom customer_name sudah ada. Skip migrasi.')
   }
+
+  // Migrasi: tambah kolom recorded_by (siapa yang mencatat)
+  const hasRecordedBy = cols.rows.some((r) => (r as { name: string }).name === 'recorded_by')
+  if (!hasRecordedBy) {
+    await client.execute("ALTER TABLE transactions ADD COLUMN recorded_by TEXT")
+    console.log('✓ Migrasi: tambah kolom recorded_by ke tabel transactions')
+  } else {
+    console.log('ℹ Kolom recorded_by sudah ada. Skip migrasi.')
+  }
+
+  // Migrasi: tambah kolom recurring_id ke expenses (untuk recurring expenses)
+  const expCols = await client.execute("PRAGMA table_info(expenses)")
+  const hasRecurringId = expCols.rows.some((r) => (r as { name: string }).name === 'recurring_id')
+  if (!hasRecurringId) {
+    await client.execute("ALTER TABLE expenses ADD COLUMN recurring_id INTEGER")
+    console.log('✓ Migrasi: tambah kolom recurring_id ke tabel expenses')
+  }
 }
 
 const SEED_CATEGORIES: { name: string; group: string; fee: number }[] = [

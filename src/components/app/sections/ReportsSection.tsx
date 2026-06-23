@@ -487,11 +487,11 @@ export function ReportsSection() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Kategori</TableHead>
+                <TableHead className="min-w-[7rem]">Kategori</TableHead>
                 <TableHead className="hidden sm:table-cell">Grup</TableHead>
-                <TableHead className="text-right">Qty</TableHead>
-                <TableHead className="text-right">Pendapatan Bersih</TableHead>
-                {hasOmzet && <TableHead className="text-right hidden sm:table-cell">Omzet</TableHead>}
+                <TableHead className="text-right whitespace-nowrap">Qty</TableHead>
+                <TableHead className="text-right whitespace-nowrap">Bersih</TableHead>
+                {hasOmzet && <TableHead className="text-right hidden sm:table-cell whitespace-nowrap">Omzet</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -502,24 +502,24 @@ export function ReportsSection() {
                     <div className="mt-1.5">
                       <Progress
                         value={maxCat > 0 ? (b.admin / maxCat) * 100 : 0}
-                        className="h-1.5 w-28 sm:w-40"
+                        className="h-1.5 w-24 sm:w-40"
                       />
                     </div>
                     <div className="text-xs text-muted-foreground mt-1 sm:hidden">
-                      {b.group ?? 'Lainnya'}
+                      {b.group ?? 'Lainnya'} · {b.qty}x
                     </div>
                   </TableCell>
                   <TableCell className="hidden sm:table-cell text-muted-foreground">
                     {b.group ?? 'Lainnya'}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums">
+                  <TableCell className="text-right tabular-nums hidden xs:table-cell">
                     {b.qty}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums font-semibold text-success">
+                  <TableCell className="text-right tabular-nums font-semibold text-success whitespace-nowrap">
                     {formatRupiah(b.admin)}
                   </TableCell>
                   {hasOmzet && (
-                    <TableCell className="text-right tabular-nums text-muted-foreground hidden sm:table-cell">
+                    <TableCell className="text-right tabular-nums text-muted-foreground hidden sm:table-cell whitespace-nowrap">
                       {b.omzet > b.admin ? formatRupiah(b.omzet) : '—'}
                     </TableCell>
                   )}

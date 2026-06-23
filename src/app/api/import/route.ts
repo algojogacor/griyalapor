@@ -11,6 +11,7 @@ interface ImportRow {
   fee_per_unit: number
   total_paid?: number
   customer_name?: string | null
+  recorded_by?: string | null
   note?: string | null
 }
 
@@ -46,6 +47,7 @@ export async function POST(req: Request) {
       const fee = Math.max(0, Math.floor(Number(row.fee_per_unit ?? 0) || 0))
       const totalPaid = Math.max(0, Math.floor(Number(row.total_paid ?? 0) || 0))
       const customerName = row.customer_name ? String(row.customer_name).trim().slice(0, 100) : null
+      const recordedBy = row.recorded_by ? String(row.recorded_by).trim().slice(0, 50) : null
       const note = row.note ? String(row.note).trim().slice(0, 200) : null
 
       if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
@@ -70,8 +72,8 @@ export async function POST(req: Request) {
 
       const total = qty * fee
       batchStmts.push({
-        sql: 'INSERT INTO transactions (category_id, date, qty, fee_per_unit, total, total_paid, customer_name, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        args: [cat.id, date, qty, fee, total, totalPaid, customerName, note],
+        sql: 'INSERT INTO transactions (category_id, date, qty, fee_per_unit, total, total_paid, customer_name, recorded_by, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        args: [cat.id, date, qty, fee, total, totalPaid, customerName, recordedBy, note],
       })
       inserted.push(i + 1)
     } catch (e) {

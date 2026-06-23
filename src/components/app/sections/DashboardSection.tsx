@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { formatRupiah, formatLongDate, todayISO } from '@/lib/format'
 import { Card } from '@/components/ui/card'
@@ -16,6 +16,8 @@ import { ArrowUpRight, Undo2, Plus, TrendingUp, Wallet, CalendarDays, Sparkles, 
 import { getCategoryColor, getCategoryInitial } from '@/lib/category-colors'
 import { cn } from '@/lib/utils'
 import { ManageQuickAccessDialog, type QuickAccessItem } from '@/components/app/ManageQuickAccess'
+import { RecorderPicker } from '@/components/app/RecorderPicker'
+import { useLastRecorder } from '@/lib/family'
 
 interface Category { id: number; name: string; group_name: string | null; default_fee: number }
 
@@ -29,7 +31,7 @@ interface Summary {
   topCustomers: { name: string; count: number; admin: number; omzet: number; last_date: string }[]
   recentTransactions: {
     id: number; date: string; qty: number; fee_per_unit: number; total: number; total_paid: number;
-    customer_name: string | null; note: string | null; category_name: string; category_group: string | null
+    customer_name: string | null; recorded_by: string | null; note: string | null; category_name: string; category_group: string | null
   }[]
 }
 
@@ -433,6 +435,16 @@ function QuickAddDialog({ category, feeOverride, onClose, onSaved }: { category:
   const [fee, setFee] = useState(String(feeOverride ?? category.default_fee))
   const [totalPaid, setTotalPaid] = useState('')
   const [customerName, setCustomerName] = useState('')
+  const [recordedBy, setRecordedBy] = useState('')
+
+  // Default ke last-used recorder
+  const { lastRecorder, setLastRecorder } = useLastRecorder()
+  useEffect(() => {
+    if (lastRecorder && !recordedBy) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setRecordedBy(lastRecorder)
+    }
+  }, [lastRecorder])
 
   const q = Number(qty.replace(/[^\d]/g, '')) || 0
   const f = Number(fee.replace(/[^\d]/g, '')) || 0
@@ -451,6 +463,7 @@ function QuickAddDialog({ category, feeOverride, onClose, onSaved }: { category:
           fee_per_unit: f,
           total_paid: tp,
           customer_name: customerName.trim() || null,
+          recorded_by: recordedBy || null,
           note: null,
         }),
       })
@@ -459,6 +472,7 @@ function QuickAddDialog({ category, feeOverride, onClose, onSaved }: { category:
     },
     onSuccess: () => {
       toast.success(`${category.name} dicatat`)
+      if (recordedBy) setLastRecorder(recordedBy)
       onSaved()
     },
     onError: (e: Error) => toast.error(e.message),
@@ -499,6 +513,7 @@ function QuickAddDialog({ category, feeOverride, onClose, onSaved }: { category:
             <Label className="font-medium text-xs flex items-center gap-1.5"><User className="w-3 h-3" /> Nama Pelanggan (opsional)</Label>
             <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="contoh: Pak Budi" className="h-11" maxLength={100} />
           </div>
+          <RecorderPicker value={recordedBy} onChange={setRecordedBy} compact />
           <div className="rounded-xl bg-primary/10 p-3 space-y-1">
             <div className="flex items-center justify-between text-sm">
               <span className="font-medium">Pendapatan Bersih (fee admin)</span>

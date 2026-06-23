@@ -7,8 +7,8 @@ export const dynamic = 'force-dynamic'
 export async function GET() {
   const [cats, txns, expenses, settings] = await Promise.all([
     db.execute('SELECT id, name, group_name, default_fee, created_at FROM categories ORDER BY id'),
-    db.execute('SELECT id, category_id, date, qty, fee_per_unit, total, total_paid, customer_name, note, created_at FROM transactions ORDER BY id'),
-    db.execute('SELECT id, date, label, amount, created_at FROM expenses ORDER BY id'),
+    db.execute('SELECT id, category_id, date, qty, fee_per_unit, total, total_paid, customer_name, recorded_by, note, created_at FROM transactions ORDER BY id'),
+    db.execute('SELECT id, date, label, amount, recurring_id, created_at FROM expenses ORDER BY id'),
     db.execute('SELECT key, value FROM settings ORDER BY key'),
   ])
 
@@ -57,8 +57,8 @@ export async function POST(req: Request) {
   }
 
   type CategoryRow = { id: number; name: string; group_name: string | null; default_fee: number; created_at: string }
-  type TxnRow = { id: number; category_id: number; date: string; qty: number; fee_per_unit: number; total: number; total_paid: number; customer_name: string | null; note: string | null; created_at: string }
-  type ExpenseRow = { id: number; date: string; label: string; amount: number; created_at: string }
+  type TxnRow = { id: number; category_id: number; date: string; qty: number; fee_per_unit: number; total: number; total_paid: number; customer_name: string | null; recorded_by: string | null; note: string | null; created_at: string }
+  type ExpenseRow = { id: number; date: string; label: string; amount: number; recurring_id?: number | null; created_at: string }
   type SettingRow = { key: string; value: string }
 
   const categories = data.categories as CategoryRow[]
@@ -105,8 +105,8 @@ export async function POST(req: Request) {
       if (existing.rows.length > 0) { results.skipped++; continue }
     }
     await db.execute({
-      sql: 'INSERT INTO transactions (id, category_id, date, qty, fee_per_unit, total, total_paid, customer_name, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      args: [t.id, t.category_id, t.date, t.qty, t.fee_per_unit, t.total, t.total_paid, t.customer_name, t.note, t.created_at],
+      sql: 'INSERT INTO transactions (id, category_id, date, qty, fee_per_unit, total, total_paid, customer_name, recorded_by, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      args: [t.id, t.category_id, t.date, t.qty, t.fee_per_unit, t.total, t.total_paid, t.customer_name, t.recorded_by, t.note, t.created_at],
     })
     results.transactions++
   }
@@ -118,8 +118,8 @@ export async function POST(req: Request) {
       if (existing.rows.length > 0) { results.skipped++; continue }
     }
     await db.execute({
-      sql: 'INSERT INTO expenses (id, date, label, amount, created_at) VALUES (?, ?, ?, ?, ?)',
-      args: [e.id, e.date, e.label, e.amount, e.created_at],
+      sql: 'INSERT INTO expenses (id, date, label, amount, recurring_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      args: [e.id, e.date, e.label, e.amount, e.recurring_id ?? null, e.created_at],
     })
     results.expenses++
   }

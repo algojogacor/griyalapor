@@ -32,6 +32,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (body.customer_name !== undefined) {
     fields.push('customer_name = ?'); args.push(body.customer_name ? String(body.customer_name).trim().slice(0, 100) : null)
   }
+  if (body.recorded_by !== undefined) {
+    fields.push('recorded_by = ?'); args.push(body.recorded_by ? String(body.recorded_by).trim().slice(0, 50) : null)
+  }
   if (body.note !== undefined) {
     fields.push('note = ?'); args.push(body.note ? String(body.note).trim().slice(0, 200) : null)
   }

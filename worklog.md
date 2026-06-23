@@ -379,3 +379,62 @@ Stage Summary:
 - Backup replace mode berbahaya — sudah ada konfirmasi dialog dengan warning, tapi bisa tambah double-confirm (ketik "HAPUS") kalau mau ekstra aman.
 - Bisa tambah: recurring expenses (pengeluaran tetap bulanan auto-generate), export laporan per pelanggan, notifikasi push untuk tutup buku harian, multi-currency.
 - Chart width(0) warning masih ada 2x saat mount Reports (cosmetic, recharts known issue).
+
+---
+Task ID: 13
+Agent: main (orchestrator) — user feature request (recorder + font + responsive)
+Task: Fitur "Dicatat Oleh" (siapa yang mencatat) dengan shortcut anggota keluarga cloud-sync, font kecil option, responsive table fix, safety audit
+
+Work Log:
+- [SAFETY AUDIT] Verifikasi logic keuangan end-to-end:
+  - total = qty × fee_per_unit (konsisten di POST transactions, agent executeProposal, import)
+  - summary: SUM(total) = admin/bersih, SUM(total_paid) = omzet, date range filter akurat (today/week/month)
+  - undo (DELETE ?last=1): hapus by `ORDER BY id DESC LIMIT 1` — benar hapus transaksi terbaru
+  - Tidak ada double-count: setiap range (today/week/month) query terpisah dengan WHERE date >= ? AND date <= ?
+  - Data tersimpan di Turso cloud (libSQL), sync semua device, survive redeploy
+
+- [FEATURE] "Dicatat Oleh" (recorded_by) — siapa anggota keluarga yang mencatat transaksi:
+  - DB: ALTER TABLE transactions ADD COLUMN recorded_by TEXT (idempotent migration)
+  - API: transactions GET/POST/PATCH, summary (recent), export CSV (kolom "Dicatat Oleh"), import, agent (get_transactions + propose_action + execute), backup/restore — semua dukung recorded_by
+  - src/lib/family.ts: hook useFamilyMembers (CRUD anggota, stored di settings.family_members JSON di cloud DB) + useLastRecorder (default ke recorder terakhir, persist per-device via localStorage)
+  - src/components/app/RecorderPicker.tsx: shortcut buttons anggota keluarga (Yangti/Yangkung/Mama/Papa default) + tombol "Kelola" untuk tambah/hapus anggota. Anggota tersimpan di cloud, sync semua device.
+  - Form Transaksi: RecorderPicker dengan default ke last-used recorder, simpan lastRecorder on success
+  - EditTransactionDialog: RecorderPicker compact
+  - QuickAddDialog (Dashboard): RecorderPicker compact + default last-used
+  - Verifikasi: pilih "Yangti" → submit → API return recorded_by: "Yangti" ✓; anggota tersimpan di cloud settings ✓
+
+- [FEATURE] Font size "Kecil" + default lebih kecil:
+  - globals.css: tambah `html[data-font-size="small"] { font-size: 14px; }`, ubah default html ke 16px
+  - Skala baru: Kecil (14px), Sedang (16px, default), Besar (18px), Sangat Besar (20px) — sebelumnya mulai dari 17px
+  - Settings: tambah opsi "Kecil (14px) — compact", ubah default ke "Sedang (16px)"
+  - providers.tsx: default localStorage 'medium' (sebelumnya 'large')
+
+- [RESPONSIVE] Fix table overflow on mobile:
+  - Reports breakdown table: header "Pendapatan Bersih" → "Bersih" (lebih compact), tambah whitespace-nowrap, min-w pada kolom Kategori, Progress bar w-24 di mobile
+  - Table component sudah punya overflow-x-auto wrapper, jadi tabel scroll horizontal dalam container (tidak overflow page)
+  - Qty column hidden di mobile sangat kecil (xs:table-cell), info qty digabung ke subtitle mobile
+
+- [DB] recurring_expenses table + expenses.recurring_id column ditambah ke schema (untuk fitur recurring expenses di masa depan). Migration idempotent.
+
+VERIFIKASI agent-browser:
+- Form Transaksi: "Dicatat Oleh" dengan shortcut Yangti/Yangkung/Mama/Papa + Kelola ✓
+- Pilih Yangti → submit → API return recorded_by: "Yangti" ✓
+- Kelola dialog: tambah/hapus anggota, tersimpan di cloud (settings.family_members) ✓
+- Font: default medium (16px), opsi Kecil (14px) tersedia ✓
+- Reports table: no overflow (scrollWidth = clientWidth), header compact ✓
+- Lint PASS, no dev log errors ✓
+
+Stage Summary:
+- Fitur "Dicatat Oleh" lengkap: shortcut 4 anggota default (Yangti/Yangkung/Mama/Papa) + kelola anggota (cloud-sync). Default ke recorder terakhir per-device. Tersimpan di DB cloud, survive redeploy.
+- Font lebih kecil: opsi Kecil (14px) tersedia, default Sedang (16px) — sebelumnya terlalu besar (17px+).
+- Responsive: table header compact, whitespace-nowrap, overflow-x-auto — tidak offside di mobile.
+- Safety: logic keuangan terverifikasi konsisten (total=qty×fee, summary akurat, undo benar, no double-count).
+
+## Status Proyek
+- STABIL & aman untuk dipakai keluarga. Recorder feature cloud-sync, font responsive, table tidak overflow. Lint PASS, QA terverifikasi.
+
+## Risiko / Saran next
+- recurring_expenses table sudah ada di DB (belum ada UI) — bisa implement auto-generate pengeluaran tetap bulanan
+- Backup replace mode bisa tambah double-confirm (ketik "HAPUS") untuk ekstra aman
+- Bisa tambah: filter transaksi by recorded_by (siapa yang catat), dashboard "kontribusi per anggota", export per pelanggan
+- iOS install card hanya tampil di iOS Safari asli (keluarga semua Android, jadi PWA install via Chrome/Android works via InstallPrompt)

@@ -153,17 +153,18 @@ async function executeReadTool(name: string, args: Record<string, unknown>): Pro
     if (to) { cond.push('t.date <= ?'); a.push(to) }
     const where = cond.length ? 'WHERE ' + cond.join(' AND ') : ''
     const res = await db.execute({
-      sql: `SELECT t.id, t.date, t.qty, t.fee_per_unit, t.total, t.total_paid, t.customer_name, t.note, c.name as category_name
+      sql: `SELECT t.id, t.date, t.qty, t.fee_per_unit, t.total, t.total_paid, t.customer_name, t.recorded_by, t.note, c.name as category_name
             FROM transactions t JOIN categories c ON c.id = t.category_id ${where} ORDER BY t.date DESC, t.id DESC LIMIT 50`,
       args: a,
     })
     const rows = res.rows.map((r) => {
-      const x = r as { id: number; date: string; qty: number; fee_per_unit: number; total: number; total_paid: number; customer_name: string | null; note: string | null; category_name: string }
+      const x = r as { id: number; date: string; qty: number; fee_per_unit: number; total: number; total_paid: number; customer_name: string | null; recorded_by: string | null; note: string | null; category_name: string }
       return {
         id: x.id, date: x.date, category: x.category_name, qty: x.qty, fee_per_unit: x.fee_per_unit,
-        pendapatan_bersih: x.total, // fee admin yang didapat
-        total_paid: x.total_paid,   // total uang dari pembeli = omzet (0 jika tidak dicatat)
-        customer_name: x.customer_name, // nama pelanggan (opsional)
+        pendapatan_bersih: x.total,
+        total_paid: x.total_paid,
+        customer_name: x.customer_name,
+        recorded_by: x.recorded_by,
         note: x.note,
       }
     })
@@ -226,11 +227,12 @@ async function executeProposal(proposal: Proposal): Promise<{ results: string[];
         const fee = Math.max(0, Math.floor(Number(action.payload.fee_per_unit ?? 0) || 0))
         const totalPaid = Math.max(0, Math.floor(Number(action.payload.total_paid ?? 0) || 0))
         const customerName = action.payload.customer_name ? String(action.payload.customer_name).trim().slice(0, 100) : null
+        const recordedBy = action.payload.recorded_by ? String(action.payload.recorded_by).trim().slice(0, 50) : null
         const note = action.payload.note ? String(action.payload.note).trim().slice(0, 200) : null
         const total = qty * fee // pendapatan bersih (fee admin)
         await db.execute({
-          sql: 'INSERT INTO transactions (category_id, date, qty, fee_per_unit, total, total_paid, customer_name, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-          args: [categoryId, date, qty, fee, total, totalPaid, customerName, note],
+          sql: 'INSERT INTO transactions (category_id, date, qty, fee_per_unit, total, total_paid, customer_name, recorded_by, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          args: [categoryId, date, qty, fee, total, totalPaid, customerName, recordedBy, note],
         })
         const omzetInfo = totalPaid > 0 ? ` (omzet ${totalPaid})` : ''
         const custInfo = customerName ? ` pelanggan "${customerName}"` : ''

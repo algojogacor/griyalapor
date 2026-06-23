@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -12,6 +12,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { RupiahInput } from '@/components/app/RupiahInput'
+import { RecorderPicker } from '@/components/app/RecorderPicker'
+import { useLastRecorder } from '@/lib/family'
 import { formatRupiah, formatLongDate, todayISO, parseRupiahInput } from '@/lib/format'
 import { getCategoryColor, getCategoryInitial } from '@/lib/category-colors'
 import { toast } from 'sonner'
@@ -20,7 +22,7 @@ import { cn } from '@/lib/utils'
 
 interface Category { id: number; name: string; group_name: string | null; default_fee: number }
 interface Txn {
-  id: number; date: string; qty: number; fee_per_unit: number; total: number; total_paid: number; customer_name: string | null; note: string | null
+  id: number; date: string; qty: number; fee_per_unit: number; total: number; total_paid: number; customer_name: string | null; recorded_by: string | null; note: string | null
   category_name: string; category_group: string | null
 }
 
@@ -30,6 +32,7 @@ export function TransactionsSection() {
   const { data: catData } = useQuery({ queryKey: ['categories'], queryFn: () => fetch('/api/categories').then((r) => r.json()) })
   const categories: Category[] = catData?.categories ?? []
   const submittingRef = useRef(false)
+  const { lastRecorder, setLastRecorder } = useLastRecorder()
 
   const [date, setDate] = useState(todayISO())
   const [categoryId, setCategoryId] = useState<string>('')
@@ -37,7 +40,16 @@ export function TransactionsSection() {
   const [fee, setFee] = useState('')
   const [totalPaid, setTotalPaid] = useState('')
   const [customerName, setCustomerName] = useState('')
+  const [recordedBy, setRecordedBy] = useState('')
   const [note, setNote] = useState('')
+
+  // Default recordedBy ke last-used recorder (persist per-device)
+  useEffect(() => {
+    if (lastRecorder && !recordedBy) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setRecordedBy(lastRecorder)
+    }
+  }, [lastRecorder])
 
   function selectCategory(id: string) {
     setCategoryId(id)
@@ -62,6 +74,8 @@ export function TransactionsSection() {
       qc.invalidateQueries({ queryKey: ['transactions'] })
       qc.invalidateQueries({ queryKey: ['summary'] })
       qc.invalidateQueries({ queryKey: ['customers'] })
+      // Simpan recorder sebagai last-used (persist per-device)
+      if (recordedBy) setLastRecorder(recordedBy)
       setDate(todayISO()); setCategoryId(''); setQty(''); setFee(''); setTotalPaid(''); setCustomerName(''); setNote('')
       setOpen(false)
     },
@@ -81,6 +95,7 @@ export function TransactionsSection() {
       fee_per_unit: parseRupiahInput(fee),
       total_paid: parseRupiahInput(totalPaid),
       customer_name: customerName.trim() || null,
+      recorded_by: recordedBy || null,
       note: note.trim() || null,
     }, {
       onSettled: () => { submittingRef.current = false },
@@ -170,6 +185,8 @@ export function TransactionsSection() {
               />
               <p className="text-xs text-muted-foreground">Catat nama pelanggan untuk tracking siapa saja yang bayar. Boleh dikosongkan</p>
             </div>
+
+            <RecorderPicker value={recordedBy} onChange={setRecordedBy} />
 
             <div className="rounded-xl bg-primary/10 p-4 space-y-1.5">
               <div className="flex items-center justify-between">
@@ -468,6 +485,7 @@ function EditTransactionDialog({ txn, onClose, onSaved }: { txn: Txn; onClose: (
   const [fee, setFee] = useState(String(txn.fee_per_unit))
   const [totalPaid, setTotalPaid] = useState(String(txn.total_paid))
   const [customerName, setCustomerName] = useState(txn.customer_name ?? '')
+  const [recordedBy, setRecordedBy] = useState(txn.recorded_by ?? '')
   const [note, setNote] = useState(txn.note ?? '')
 
   const q = parseRupiahInput(qty) || 0
@@ -486,6 +504,7 @@ function EditTransactionDialog({ txn, onClose, onSaved }: { txn: Txn; onClose: (
           fee_per_unit: f,
           total_paid: tp,
           customer_name: customerName.trim() || null,
+          recorded_by: recordedBy || null,
           note: note.trim() || null,
         }),
       })
@@ -528,6 +547,7 @@ function EditTransactionDialog({ txn, onClose, onSaved }: { txn: Txn; onClose: (
             <Label className="font-medium flex items-center gap-1.5"><User className="w-3.5 h-3.5" /> Nama Pelanggan (opsional)</Label>
             <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="contoh: Pak Budi" className="h-12" maxLength={100} />
           </div>
+          <RecorderPicker value={recordedBy} onChange={setRecordedBy} compact />
           <div className="rounded-xl bg-primary/10 p-3 space-y-1">
             <div className="flex items-center justify-between text-sm">
               <span>Pendapatan Bersih</span>

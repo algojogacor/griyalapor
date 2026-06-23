@@ -97,7 +97,7 @@ export async function GET() {
 
   // Transaksi terakhir (5)
   const recentRes = await db.execute({
-    sql: `SELECT t.id, t.category_id, t.date, t.qty, t.fee_per_unit, t.total, t.total_paid, t.customer_name, t.note,
+    sql: `SELECT t.id, t.category_id, t.date, t.qty, t.fee_per_unit, t.total, t.total_paid, t.customer_name, t.recorded_by, t.note,
                  c.name as category_name, c.group_name as category_group
           FROM transactions t JOIN categories c ON c.id = t.category_id
           ORDER BY t.id DESC LIMIT 5`,

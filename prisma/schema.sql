@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   total_paid INTEGER NOT NULL DEFAULT 0,  -- total uang dari pembeli = OMZET (fee sudah include)
   bill_per_unit INTEGER NOT NULL DEFAULT 0,  -- (deprecated, kompatibilitas lama)
   customer_name TEXT,                -- nama pelanggan (opsional, untuk tracking)
+  recorded_by TEXT,                  -- nama anggota keluarga yang mencatat (opsional)
   note TEXT,
   created_at TEXT DEFAULT (datetime('now'))
 );
@@ -34,7 +35,6 @@ CREATE TABLE IF NOT EXISTS expenses (
   created_at TEXT DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(date);
-CREATE INDEX IF NOT EXISTS idx_expenses_recurring ON expenses(recurring_id);
 
 CREATE TABLE IF NOT EXISTS recurring_expenses (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -48,7 +48,7 @@ export function SettingsSection() {
   }
 
   const expensesEnabled = settings.expenses_enabled === '1'
-  const fontSize = settings.font_size || 'large'
+  const fontSize = settings.font_size || 'medium'
 
   return (
     <div className="space-y-5">
@@ -67,13 +67,14 @@ export function SettingsSection() {
             <div className="space-y-4">
               <div>
                 <Label className="font-medium">Ukuran Huruf</Label>
-                <p className="text-xs text-muted-foreground mb-2">Perbesar huruf agar lebih mudah dibaca</p>
+                <p className="text-xs text-muted-foreground mb-2">Pilih ukuran huruf yang nyaman di mata</p>
                 <Select value={fontSize} onValueChange={setFontSize}>
                   <SelectTrigger className="h-12"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="medium" className="py-2.5">Sedang (17px)</SelectItem>
-                    <SelectItem value="large" className="py-2.5">Besar (19px) — disarankan</SelectItem>
-                    <SelectItem value="xlarge" className="py-2.5">Sangat Besar (21px)</SelectItem>
+                    <SelectItem value="small" className="py-2.5">Kecil (14px) — compact</SelectItem>
+                    <SelectItem value="medium" className="py-2.5">Sedang (16px) — disarankan</SelectItem>
+                    <SelectItem value="large" className="py-2.5">Besar (18px)</SelectItem>
+                    <SelectItem value="xlarge" className="py-2.5">Sangat Besar (20px)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

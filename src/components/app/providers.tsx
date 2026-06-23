@@ -21,7 +21,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   )
 
   useEffect(() => {
-    const size = localStorage.getItem('gl-font-size') || 'large'
+    const size = localStorage.getItem('gl-font-size') || 'medium'
     document.documentElement.setAttribute('data-font-size', size)
   }, [])
 
