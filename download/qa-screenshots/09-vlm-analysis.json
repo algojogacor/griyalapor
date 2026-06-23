@@ -1,0 +1,28 @@
+{
+  "choices": [
+    {
+      "finish_reason": "stop",
+      "index": 0,
+      "message": {
+        "content": "### CHECK 1 - TWO PILL BADGES PER ROW:  \n**FAIL** - Not all rows have two pill badges. The first row has one blue badge (\"Bu Si\") and one gray badge (\"Mami\"), but the second row has only one gray badge (\"Yar\") with no blue badge.  \n\n### CHECK 2 - RECORDER FILTER CHIPS:  \n**FAIL** - No filter chips are visible near the top below the page title.  \n\n### CHECK 3 - NO HORIZONTAL OVERFLOW:  \n**PASS** - All content is contained within the 375px viewport with no horizontal scroll or cutoff.  \n\n### CHECK 4 - CATEGORY NAMES NOT TRUNCATED:  \n**FAIL** - The category name \"PLN Pascabayar\" is truncated to \"PL...\" in the first row.  \n\n### CHECK 5 - BOTTOM NAV LABELS:  \n**FAIL** - Labels are truncated: \"Beranda\", \"Transaksi\", \"Pengeluaran\", \"Kategori\", \"Laporan\", \"Pengaturan\" (expected full labels, but some may be cut off).  \n\n\n### Overall Summary:  \nTransaction rows show partial category names (e.g., \"PL...\" instead of \"PLN Pascabayar\"), inconsistent pill badges (some rows missing blue user badges), and no recorder filter chips. Bottom nav labels are truncated, though content fits the viewport.",
+        "role": "assistant"
+      }
+    }
+  ],
+  "created": 1782230372,
+  "id": "202606232359262e761c3185b64c78",
+  "model": "glm-4.6v",
+  "object": "chat.completion",
+  "request_id": "202606232359262e761c3185b64c78",
+  "usage": {
+    "completion_tokens": 290,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    },
+    "prompt_tokens": 1047,
+    "prompt_tokens_details": {
+      "cached_tokens": 6
+    },
+    "total_tokens": 1337
+  }
+}

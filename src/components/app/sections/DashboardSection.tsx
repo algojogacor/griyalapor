@@ -12,7 +12,7 @@ import { RupiahInput } from '@/components/app/RupiahInput'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAppStore } from '@/lib/store'
 import { toast } from 'sonner'
-import { ArrowUpRight, Undo2, Plus, TrendingUp, Wallet, CalendarDays, Sparkles, Zap, User, Users, Settings2 } from 'lucide-react'
+import { ArrowUpRight, Undo2, Plus, TrendingUp, Wallet, CalendarDays, Sparkles, Zap, User, Users, UserCircle, Settings2 } from 'lucide-react'
 import { getCategoryColor, getCategoryInitial } from '@/lib/category-colors'
 import { cn } from '@/lib/utils'
 import { ManageQuickAccessDialog, type QuickAccessItem } from '@/components/app/ManageQuickAccess'
@@ -29,6 +29,7 @@ interface Summary {
   expenses: { today: { count: number; total: number }; week: { count: number; total: number }; month: { count: number; total: number } }
   breakdown: { category_id: number; name: string; group: string | null; count: number; admin: number; omzet: number }[]
   topCustomers: { name: string; count: number; admin: number; omzet: number; last_date: string }[]
+  topRecorders: { name: string; count: number; admin: number; omzet: number; last_date: string }[]
   recentTransactions: {
     id: number; date: string; qty: number; fee_per_unit: number; total: number; total_paid: number;
     customer_name: string | null; recorded_by: string | null; note: string | null; category_name: string; category_group: string | null
@@ -142,14 +143,15 @@ export function DashboardSection() {
         <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle at 20% 30%, white 1px, transparent 1px), radial-gradient(circle at 70% 60%, white 1px, transparent 1px)', backgroundSize: '48px 48px, 64px 64px' }} />
         <div className="absolute -right-8 -top-8 w-40 h-40 rounded-full bg-white/5 blur-2xl pointer-events-none" />
         <div className="relative flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-primary-foreground/80 text-sm font-medium flex items-center gap-1.5">
-              <Wallet className="w-4 h-4" /> Pendapatan Hari Ini (fee admin)
+          <div className="min-w-0 flex-1">
+            <p className="text-primary-foreground/80 text-xs sm:text-sm font-medium flex items-center gap-1.5">
+              <Wallet className="w-4 h-4 shrink-0" /> <span>Pendapatan Hari Ini</span>
+              <span className="opacity-70 hidden xs:inline">(fee admin)</span>
             </p>
-            <div className="text-3xl md:text-5xl font-bold mt-1 tracking-tight tabular-nums drop-shadow-sm">
+            <div className="text-3xl md:text-5xl font-bold mt-1 tracking-tight tabular-nums drop-shadow-sm break-all">
               {isLoading ? <Skeleton className="h-12 w-48 bg-white/20" /> : formatRupiah(data?.today.admin)}
             </div>
-            <p className="text-primary-foreground/80 text-sm mt-2">
+            <p className="text-primary-foreground/80 text-xs sm:text-sm mt-2">
               {data?.today.count ?? 0} transaksi tercatat
             </p>
             {data && data.today.omzet > data.today.admin && (
@@ -165,7 +167,7 @@ export function DashboardSection() {
         <div className="relative flex gap-2 mt-5">
           <Button
             onClick={() => setSection('transactions')}
-            className="bg-white text-primary hover:bg-white/90 font-semibold h-12 px-5 shadow-sm"
+            className="bg-white text-primary hover:bg-white/90 font-semibold h-12 px-4 sm:px-5 shadow-sm flex-1 sm:flex-initial"
           >
             <Plus className="w-5 h-5" /> Catat Transaksi
           </Button>
@@ -173,9 +175,9 @@ export function DashboardSection() {
             onClick={() => undoMutation.mutate()}
             disabled={undoMutation.isPending}
             variant="secondary"
-            className="bg-white/15 text-primary-foreground hover:bg-white/25 border-0 h-12 px-4 backdrop-blur-sm"
+            className="bg-white/15 text-primary-foreground hover:bg-white/25 border-0 h-12 px-3 sm:px-4 backdrop-blur-sm"
           >
-            <Undo2 className="w-5 h-5" /> Batal Terakhir
+            <Undo2 className="w-5 h-5" /> <span className="hidden xs:inline">Batal Terakhir</span>
           </Button>
         </div>
       </Card>
@@ -394,6 +396,48 @@ export function DashboardSection() {
                   </div>
                   <div className="mt-1.5 ml-[42px] h-1 rounded-full bg-secondary overflow-hidden">
                     <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${Math.max(4, (c.admin / maxAdmin) * 100)}%` }} />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </Card>
+      )}
+
+      {/* Kontribusi per anggota keluarga bulan ini — siapa yang paling aktif mencatat */}
+      {!isLoading && data && data.topRecorders && data.topRecorders.length > 0 && (
+        <Card className="p-5">
+          <div className="flex items-center gap-2 mb-1">
+            <UserCircle className="w-5 h-5 text-primary" />
+            <h2 className="font-bold text-lg">Kontribusi Pencatat Bulan Ini</h2>
+          </div>
+          <p className="text-xs text-muted-foreground mb-3">Siapa anggota keluarga yang paling rajin mencatat transaksi</p>
+          <div className="space-y-2">
+            {data.topRecorders.map((r, i) => {
+              const maxCount = data.topRecorders[0]?.count || 1
+              const pct = Math.max(4, (r.count / maxCount) * 100)
+              return (
+                <div key={r.name} className="py-1.5 border-b last:border-0">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className={cn(
+                        'w-8 h-8 rounded-full flex items-center justify-center shrink-0 font-bold text-[11px]',
+                        i === 0 ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' : 'bg-primary/10 text-primary'
+                      )}>
+                        {i === 0 ? '★' : i + 1}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-medium truncate">{r.name}</div>
+                        <div className="text-xs text-muted-foreground">{r.count} transaksi · terakhir {r.last_date}</div>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="font-semibold tabular-nums">{formatRupiah(r.admin)}</div>
+                      <div className="text-[10px] text-muted-foreground">fee admin</div>
+                    </div>
+                  </div>
+                  <div className="mt-1.5 ml-[42px] h-1.5 rounded-full bg-secondary overflow-hidden">
+                    <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${pct}%` }} />
                   </div>
                 </div>
               )

@@ -45,6 +45,7 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  --breakpoint-xs: 30rem; /* 480px — for small phones in landscape / large phones */
 }
 
 /* ===== Light mode (default, prioritas untuk lansia) ===== */

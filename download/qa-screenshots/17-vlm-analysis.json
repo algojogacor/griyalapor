@@ -1,0 +1,28 @@
+{
+  "choices": [
+    {
+      "finish_reason": "stop",
+      "index": 0,
+      "message": {
+        "content": "### 1. MINI SUMMARY BAR  \n(a) Card labeled 'Hari Ini' with a count like '5 trx'  \n- Exact text: \"Hari Ini\" + \"5 trx\"  \n- ✅ Present  \n\n(b) Card labeled 'Bersih' with today's admin amount shown in GREEN color  \n- Exact text: \"Bersih\" + \"Rp 70.500\"  \n- ✅ Present (amount is green)  \n\n(c) Card labeled 'Omzet' with today's omzet amount  \n- Exact text: \"Omzet\" + \"Rp 4.300.000\"  \n- ✅ Present  \n\n\n### 2. TRANSACTION ROWS  \n(a) Category name is FULL (not truncated/cut off with ellipsis)  \n- ✅ Full (no truncation/ellipsis)  \n\n(b) Two pill/badge chips visible: one with a User icon showing customer name, one with a UserCircle icon showing recorder name  \n- ✅ Two chips per row (customer + recorder)  \n\n(c) Amount on the right side  \n- ✅ Amounts on the right  \n\nFirst 3 transaction rows (verbatim):  \n1. **Row 1**:  \n   - Category: \"PLN Pascabayar\"  \n   - Customer pill: \"Bu Siti\" (User icon)  \n   - Recorder pill: \"Mama\" (UserCircle icon)  \n   - Amount: \"+Rp 7.500\"  \n\n2. **Row 2**:  \n   - Category: \"PLN Prabayar\"  \n   - Customer pill: \"Pak Budi\" (User icon)  \n   - Recorder pill: \"Yangti\" (UserCircle icon)  \n   - Amount: \"+Rp 15.000\"  \n\n3. **Row 3**: (Note: Only 2 transactions are visible in the screenshot, but the first 2 are listed as per the visible content)  \n   - (No third row visible, but the first 2 are verified as above)  \n\n\n### 3. RECORDER FILTER CHIPS  \n- Exact labels: \"Semua\", \"Mama\", \"Yangti\", \"Tidak ada\"  \n- ✅ All present  \n\n\n### 4. BOTTOM NAV  \n- Count: 6 items  \n- Exact labels: \"Beranda\", \"Transaksi\", \"Biaya\", \"Kategori\", \"Laporan\", \"Atur\"  \n- ✅ All present (6 items with short labels)",
+        "role": "assistant"
+      }
+    }
+  ],
+  "created": 1782232138,
+  "id": "202606240028403b0967b5572a47f0",
+  "model": "glm-4.6v",
+  "object": "chat.completion",
+  "request_id": "202606240028403b0967b5572a47f0",
+  "usage": {
+    "completion_tokens": 512,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    },
+    "prompt_tokens": 1067,
+    "prompt_tokens_details": {
+      "cached_tokens": 7
+    },
+    "total_tokens": 1579
+  }
+}

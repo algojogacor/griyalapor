@@ -39,7 +39,7 @@ import {
 import { cn } from '@/lib/utils'
 
 // ---------- Tipe ----------
-type Field = 'date' | 'category' | 'group' | 'qty' | 'fee' | 'total_paid' | 'customer_name' | 'note'
+type Field = 'date' | 'category' | 'group' | 'qty' | 'fee' | 'total_paid' | 'customer_name' | 'recorded_by' | 'note'
 type DateFormat = 'YYYY-MM-DD' | 'DD/MM/YYYY' | 'DD-MM-YYYY'
 
 interface ImportResult {
@@ -56,6 +56,7 @@ const FIELD_LABELS: Record<Field, string> = {
   fee: 'Fee per Unit',
   total_paid: 'Total Dibayar Pembeli (Omzet)',
   customer_name: 'Nama Pelanggan',
+  recorded_by: 'Dicatat Oleh',
   note: 'Catatan',
 }
 
@@ -67,6 +68,7 @@ const FIELD_REQUIRED: Record<Field, boolean> = {
   fee: false,
   total_paid: false,
   customer_name: false,
+  recorded_by: false,
   note: false,
 }
 
@@ -78,6 +80,7 @@ const FIELD_HINTS: Record<Field, string> = {
   fee: 'Biaya admin per unit (Rp). Kosongkan = 0',
   total_paid: 'Total uang dari pembeli = Omzet (Rp). Opsional',
   customer_name: 'Nama pelanggan (opsional, untuk tracking)',
+  recorded_by: 'Siapa yang mencatat (opsional, contoh: Yangti, Mama)',
   note: 'Opsional',
 }
 
@@ -87,6 +90,8 @@ const NO_MAPPING = '__none__'
 
 function detectHeaderField(header: string): Field | null {
   const h = header.toLowerCase().trim()
+  // cek recorded_by SEBELUM customer_name karena "dicatat" / "oleh" spesifik
+  if (/dicatat|recorded|diisi.*oleh|oleh.*siapa|petugas|operator/.test(h)) return 'recorded_by'
   // cek customer_name SEBELUM qty karena "pelanggan" bisa muncul di header qty (idpel) maupun customer
   if (/(^|_)pelanggan($|_)|customer|nama.*pelanggan|atas.*nama|konsumen|^nama$/.test(h)) return 'customer_name'
   if (/(^|_)tanggal($|_)|^date$|^tgl\b|tanggal/.test(h)) return 'date'
@@ -232,9 +237,9 @@ export function ImportSection() {
 
   function downloadSample() {
     const csv =
-      'Tanggal,Kategori,Grup,Jumlah,Fee,Total Dibayar,Pelanggan,Catatan\n' +
-      '23/06/2026,PLN,Listrik,49,3000,14000000,Pak Budi,Shift pagi\n' +
-      '23/06/2026,BPJS,Kesehatan,12,2500,,Bu Siti,\n'
+      'Tanggal,Kategori,Grup,Jumlah,Fee,Total Dibayar,Pelanggan,Dicatat Oleh,Catatan\n' +
+      '23/06/2026,PLN,Listrik,49,3000,14000000,Pak Budi,Yangti,Shift pagi\n' +
+      '23/06/2026,BPJS,Kesehatan,12,2500,,Bu Siti,Mama,\n'
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -259,8 +264,9 @@ export function ImportSection() {
       const fee = mapping.fee ? normalizeInt(r[mapping.fee] ?? '') : 0
       const totalPaid = mapping.total_paid ? normalizeInt(r[mapping.total_paid] ?? '') : 0
       const customerName = mapping.customer_name ? (r[mapping.customer_name] ?? '').trim() : ''
+      const recordedBy = mapping.recorded_by ? (r[mapping.recorded_by] ?? '').trim() : ''
       const note = mapping.note ? (r[mapping.note] ?? '').trim() : ''
-      return { date, category, group, qty, fee, totalPaid, bersih: qty * fee, omzet: totalPaid, customerName, note }
+      return { date, category, group, qty, fee, totalPaid, bersih: qty * fee, omzet: totalPaid, customerName, recordedBy, note }
     })
   }, [step, rawRows, mapping, dateFormat])
 
@@ -330,6 +336,7 @@ export function ImportSection() {
       const fee = mapping.fee ? normalizeInt(r[mapping.fee] ?? '') : 0
       const totalPaid = mapping.total_paid ? normalizeInt(r[mapping.total_paid] ?? '') : 0
       const customerName = mapping.customer_name ? (r[mapping.customer_name] ?? '').trim() || null : null
+      const recordedBy = mapping.recorded_by ? (r[mapping.recorded_by] ?? '').trim() || null : null
       const note = mapping.note ? (r[mapping.note] ?? '').trim() : null
       return {
         date: normalizeDate(dateRaw, dateFormat),
@@ -339,6 +346,7 @@ export function ImportSection() {
         fee_per_unit: fee,
         total_paid: totalPaid,
         customer_name: customerName,
+        recorded_by: recordedBy,
         note: note || null,
       }
     })
@@ -501,7 +509,7 @@ export function ImportSection() {
               Baris pertama harus berisi nama kolom. Contoh kolom yang dikenali:
             </p>
             <div className="flex flex-wrap gap-1.5 mt-2">
-              {['Tanggal', 'Kategori', 'Grup', 'Jumlah', 'Fee', 'Catatan'].map(
+              {['Tanggal', 'Kategori', 'Grup', 'Jumlah', 'Fee', 'Total Dibayar', 'Pelanggan', 'Dicatat Oleh', 'Catatan'].map(
                 (c) => (
                   <Badge key={c} variant="secondary" className="font-mono">
                     {c}
@@ -511,7 +519,7 @@ export function ImportSection() {
             </div>
             <p className="text-muted-foreground mt-2 text-xs">
               Sinonim yang dikenali: Tanggal → Date/Tgl, Kategori →
-              Jenis/Layanan, Jumlah → Qty/IDPEL, Fee → Admin, Total Dibayar → Omzet/Uang Masuk, Pelanggan → Customer/Atas Nama/Konsumen, Catatan → Note/Ket,
+              Jenis/Layanan, Jumlah → Qty/IDPEL, Fee → Admin, Total Dibayar → Omzet/Uang Masuk, Pelanggan → Customer/Atas Nama/Konsumen, Dicatat Oleh → Recorded/Diisi Oleh/Petugas, Catatan → Note/Ket,
               Grup → Group.
             </p>
           </div>
@@ -549,7 +557,7 @@ export function ImportSection() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {(
-                ['date', 'category', 'group', 'qty', 'fee', 'total_paid', 'customer_name', 'note'] as Field[]
+                ['date', 'category', 'group', 'qty', 'fee', 'total_paid', 'customer_name', 'recorded_by', 'note'] as Field[]
               ).map((f) => (
                 <div key={f} className="space-y-1.5">
                   <Label className="text-sm font-medium flex items-center gap-1.5">
@@ -647,6 +655,7 @@ export function ImportSection() {
                     <TableHead className="text-right">Bersih</TableHead>
                     <TableHead className="text-right hidden md:table-cell">Omzet</TableHead>
                     <TableHead className="hidden lg:table-cell">Pelanggan</TableHead>
+                    <TableHead className="hidden lg:table-cell">Dicatat</TableHead>
                     <TableHead className="hidden md:table-cell">Catatan</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -683,6 +692,9 @@ export function ImportSection() {
                       <TableCell className="hidden lg:table-cell text-muted-foreground text-xs">
                         {r.customerName || '—'}
                       </TableCell>
+                      <TableCell className="hidden lg:table-cell text-muted-foreground text-xs">
+                        {r.recordedBy || '—'}
+                      </TableCell>
                       <TableCell className="hidden md:table-cell text-muted-foreground text-xs">
                         {r.note || '—'}
                       </TableCell>
@@ -691,7 +703,7 @@ export function ImportSection() {
                   {previewRows.length === 0 && (
                     <TableRow>
                       <TableCell
-                        colSpan={9}
+                        colSpan={10}
                         className="text-center text-muted-foreground py-6"
                       >
                         Tidak ada baris untuk dipratinjau.

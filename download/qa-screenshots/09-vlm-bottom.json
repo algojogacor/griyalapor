@@ -1,0 +1,28 @@
+{
+  "choices": [
+    {
+      "finish_reason": "stop",
+      "index": 0,
+      "message": {
+        "content": "1. Icon: House-like icon (black circle with \"N\"), Label: Beranda  \n2. Icon: List/document icon (green), Label: Transaksi  \n3. Icon: Downward arrow icon, Label: Pengelua... (truncated)  \n4. Icon: Tag icon, Label: Kategori  \n5. Icon: Bar chart icon, Label: Laporan  \n6. Icon: Gear icon, Label: Pengaturan",
+        "role": "assistant"
+      }
+    }
+  ],
+  "created": 1782230480,
+  "id": "20260624000118d804ac9f618a492d",
+  "model": "glm-4.6v",
+  "object": "chat.completion",
+  "request_id": "20260624000118d804ac9f618a492d",
+  "usage": {
+    "completion_tokens": 94,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    },
+    "prompt_tokens": 425,
+    "prompt_tokens_details": {
+      "cached_tokens": 8
+    },
+    "total_tokens": 519
+  }
+}

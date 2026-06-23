@@ -129,6 +129,32 @@ export async function GET() {
     }
   })
 
+  // Pencatat (recorded_by) teratas bulan ini — siapa anggota keluarga yang paling aktif mencatat
+  const topRecordersRes = await db.execute({
+    sql: `SELECT recorded_by,
+                 COUNT(*) as count,
+                 COALESCE(SUM(total),0) as admin,
+                 COALESCE(SUM(total_paid),0) as omzet,
+                 MAX(date) as last_date
+          FROM transactions
+          WHERE recorded_by IS NOT NULL AND TRIM(recorded_by) != ''
+            AND date >= ? AND date <= ?
+          GROUP BY recorded_by
+          ORDER BY count DESC, admin DESC
+          LIMIT 10`,
+    args: [month.from, month.to],
+  })
+  const topRecorders = topRecordersRes.rows.map((r) => {
+    const x = r as { recorded_by: string; count: number; admin: number; omzet: number; last_date: string }
+    return {
+      name: x.recorded_by,
+      count: Number(x.count),
+      admin: Number(x.admin),
+      omzet: Number(x.omzet),
+      last_date: x.last_date,
+    }
+  })
+
   return json({
     ranges: { today, week, month },
     today: todayAgg,
@@ -138,6 +164,7 @@ export async function GET() {
     breakdown,
     monthlyTrend,
     topCustomers,
+    topRecorders,
     recentTransactions: recentRes.rows,
   })
 }

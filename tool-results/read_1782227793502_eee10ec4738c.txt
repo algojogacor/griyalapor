@@ -1,0 +1,441 @@
+     1→# GriyaLapor — Worklog
+     2→
+     3→PWA Pencatatan Keuangan PPOB untuk usaha kakek. Next.js 16 + Turso + Mistral AI Agent.
+     4→
+     5→## Keputusan Teknis
+     6→- Database: Turso (libSQL) via Prisma + `@prisma/adapter-libsql`
+     7→- AI: Mistral `mistral-large-latest` (function calling), via API route server-side
+     8→- Arsitektur: Next.js 16 + API Routes (proxy tipis), single-page app dengan section navigation client-side
+     9→- Performa: CSS transitions (bukan framer-motion berat), lazy-load charts, minimal client JS (laptop kakek lemot)
+    10→- Styling: Tailwind 4, hijau tua + putih, font besar kontras tinggi, bottom nav mobile, 100% Bahasa Indonesia
+    11→- PWA: manifest + service worker, installable
+    12→
+    13→## Credentials
+    14→- Turso URL: libsql://ppob-algojogacorbgt.aws-ap-northeast-1.turso.io
+    15→- Turso token: disimpan di .env.local (rotasi sebelum production!)
+    16→- Mistral key: disimpan di .env.local
+    17→
+    18→---
+    19→Task ID: 0
+    20→Agent: main (orchestrator)
+    21→Task: Phase 0 — Foundation setup
+    22→
+    23→Work Log:
+    24→- Eksplorasi project: Next.js 16, Tailwind 4 (CSS-first), Prisma 6, shadcn/ui lengkap, dev server sudah jalan di port 3000
+    25→- Install deps: @prisma/adapter-libsql, @libsql/client, papaparse (+types)
+    26→- Tulis .env.local (TURSO_URL, TURSO_AUTH_TOKEN, DATABASE_URL embedded token, MISTRAL_API_KEY, MISTRAL_MODEL)
+    27→- Tulis prisma/schema.prisma: model Category, Transaction, Expense, Setting (Turso/libSQL)
+    28→- Update src/lib/db.ts: PrismaClient dengan PrismaLibSQL adapter
+    29→- Tulis src/lib/format.ts: format rupiah, tanggal Indonesia, range minggu/bulan
+    30→- Tulis src/lib/mistral.ts: client Mistral dengan function calling
+    31→
+    32→Stage Summary:
+    33→- Foundation siap. Berikutnya: prisma db push ke Turso, generate client, seed kategori PPOB default, lalu build layout + theming + nav shell.
+    34→
+    35→---
+    36→Task ID: 2
+    37→Agent: full-stack-developer
+    38→Task: Build ReportsSection + ImportSection (full implementations)
+    39→
+    40→Work Log:
+    41→- Baca context: worklog.md, src/lib/format.ts, src/lib/db.ts, DashboardSection.tsx, TransactionsSection.tsx, globals.css, AppShell.tsx, dan semua API routes terkait (summary, transactions, expenses, export, import, settings) untuk memahami contract data & pola visual.
+    42→- Buat helper `src/components/app/sections/MonthlyChart.tsx` — komponen recharts (BarChart, Bar, XAxis, YAxis, Tooltip, Legend, CartesianGrid, ResponsiveContainer) yang theme-aware via `fill-primary`/`fill-destructive` Tailwind classes + `currentColor` untuk grid/axis. File terpisah agar bisa di-code-split dengan `next/dynamic({ ssr: false })`.
+    43→- Overwrite `src/components/app/sections/ReportsSection.tsx`:
+    44→  - Header "Laporan" + filter rentang tanggal (Dari/Sampai, default = thisMonthRange) + tombol "Bulan Ini".
+    45→  - Kartu ringkasan: Total Pendapatan, Jumlah Transaksi, Total Pengeluaran, Laba Bersih (hanya tampil jika `expenses_enabled === '1'` dari `/api/settings`). Komputasi dari `/api/transactions?from=&to=` dan `/api/expenses?from=&to=` sesuai spec.
+    46→  - Grafik batang 6 bulan terakhir via lazy-load `MonthlyChart` (recharts), data dari `/api/summary` → `monthlyTrend`.
+    47→  - Tabel breakdown per kategori (Kategori, Grup, Jumlah, Total) dengan progress bar relatif terhadap max, diurutkan desc.
+    48→  - Export CSV: `window.location.href = /api/export?from=&to=&expenses=1`.
+    49→  - Export PDF: `window.open()` + `document.write()` HTML styled (judul, rentang, tabel transaksi dengan TOTAL, tabel pengeluaran + laba bersih bila enabled), lalu `print()`. Inline CSS print-friendly.
+    50→  - react-query untuk semua fetch, loading skeletons, empty states, formatRupiah + tabular-nums.
+    51→- Overwrite `src/components/app/sections/ImportSection.tsx`:
+    52→  - Alur 3 langkah dengan indikator visual (Upload → Pemetaan → Konfirmasi).
+    53→  - Step 1: drag-drop zone + file input (.csv), tombol "Unduh Contoh CSV" (generate CSV header `Tanggal,Kategori,Grup,Jumlah,Fee,Catatan` + 2 baris contoh), penjelasan format & sinonim kolom.
+    54→  - Step 2: 6 Select dropdown untuk pemetaan field (Tanggal, Kategori, Grup opsional, Jumlah, Fee opsional, Catatan opsional) dengan auto-detect berdasarkan nama header (regex case-insensitive). Deteksi format tanggal otomatis (YYYY-MM-DD / DD/MM/YYYY / DD-MM-YYYY) dari 10 sample pertama, dengan override manual. Preview tabel 8 baris pertama dengan Total = qty × fee. Validasi: Tanggal, Kategori, Jumlah wajib; pesan error Bahasa Indonesia.
+    55→  - Step 3: hasil impor (jumlah berhasil, kategori baru dibuat dengan badge, daftar error per baris). Tombol "Impor Lagi" untuk reset.
+    56→  - Normalisasi: tanggal → YYYY-MM-DD sesuai format terdeteksi, qty/fee → integer. POST ke `/api/import` dengan `{ rows, createMissing: true }`. Invalidate queries transactions/summary/categories setelah sukses. sonner toast untuk semua feedback.
+    57→- Jalankan `bun run lint` → pass tanpa error. Jalankan `npx tsc --noEmit` → tidak ada error baru di file yang dibuat (MonthlyChart, ReportsSection, ImportSection). Hanya pre-existing error di API routes (Row casting) & examples yang tidak terkait task ini.
+    58→
+    59→Stage Summary:
+    60→- Files created: `src/components/app/sections/MonthlyChart.tsx` (helper recharts, lazy-loadable).
+    61→- Files modified: `src/components/app/sections/ReportsSection.tsx` (full implementation), `src/components/app/sections/ImportSection.tsx` (full implementation).
+    62→- Tidak ada API route baru; semua konsumsi endpoint existing.
+    63→- recharts di-code-split via `next/dynamic({ ssr: false })` agar tidak membebani bundle utama (laptop kakek lemot).
+    64→- 100% Bahasa Indonesia, font besar kontras tinggi, mobile-first responsive, light mode primary, dark mode berfungsi via CSS variables.
+    65→- `bun run lint` PASS. TypeScript clean untuk file baru.
+    66→
+    67→---
+    68→Task ID: 1 + 3 + 4 + 5
+    69→Agent: main (orchestrator)
+    70→Task: Dashboard, Transactions, Categories, Settings, AI Agent, PWA, verification
+    71→
+    72→Work Log:
+    73→- KOREKSI Phase 0: Prisma CLI `sqlite` provider menolak URL `libsql://` untuk db push. PIVOT ke `@libsql/client` langsung (sesuai brief asli, lebih ringan untuk laptop lemot). `src/lib/db.ts` sekarang pakai createClient(TURSO_URL, TURSO_AUTH_TOKEN). Skema DDL di `prisma/schema.sql`, dijalankan via `scripts/migrate.ts`. Migration + seed 17 kategori PPOB default berhasil ke Turso.
+    74→- API routes lengkap (semua konsumsi libsql langsung): /api/categories (GET/POST) + [id] (PATCH/DELETE dengan cek relasi), /api/transactions (GET dengan filter, POST, DELETE?last=1 untuk undo) + [id] (DELETE), /api/expenses (GET/POST) + [id] (DELETE), /api/summary (ringkasan today/week/month + breakdown + tren 6 bulan + recent), /api/settings (GET/PATCH upsert), /api/export (CSV transaksi/pengeluaran), /api/import (bulk insert dengan auto-create kategori hilang), /api/agent (Mistral function calling).
+    75→- src/lib/store.ts (Zustand): active section + agent open + expenses enabled.
+    76→- src/components/app/providers.tsx: ThemeProvider (light default) + QueryClient + Toaster + apply font-size dari localStorage ke <html data-font-size>.
+    77→- src/app/layout.tsx: metadata GriyaLapor, manifest, theme-color #1f7a55, font Geist, viewport.
+    78→- src/app/globals.css: theme hijau tua (oklch) light + dark, base font 17px dengan 3 ukuran (medium/large/xlarge via data-font-size), custom scrollbar, print styles, no heavy animations.
+    79→- src/components/app/AppShell.tsx: header sticky + branding + theme toggle, sidebar desktop (6 nav), bottom nav mobile (5 nav), main content area, AgentChat overlay. Sticky footer via min-h-screen flex flex-col.
+    80→- DashboardSection: greeting + tanggal, hero card "Pendapatan Hari Ini" dengan tombol Catat & Batal Terakhir (undo), 3 stat cards (hari/minggu/bulan), expense mini cards (jika enabled), quick links (Impor/Laporan), breakdown per kategori bulan ini, transaksi terakhir, hint AI.
+    81→- TransactionsSection: form Catat (tanggal, kategori grouped select, qty & fee input besar dengan auto-fee dari kategori via onChange, total otomatis, catatan) + list dengan filter tanggal, search, hapus dengan konfirmasi, grand total.
+    82→- CategoriesSection: daftar grouped (Collapsible per grup), tambah/edit (Dialog), hapus dengan cek relasi (AlertDialog), fee default editable.
+    83→- SettingsSection: ukuran font (3 pilihan, live apply), mode terang/gelap, toggle pengeluaran operasional, shortcut ke kategori, info database Turso, catatan keamanan.
+    84→- AI Agent (/api/agent + AgentChat.tsx): Mistral mistral-large-latest dengan 4 tools (get_categories, get_transactions, get_summary, propose_action). Tool loop read dieksekusi server-side; propose_action mengembalikan proposal ke client. Konfirmasi via card "Ya, Jalankan"/"Batal" → server eksekusi proposal (create_category/create_transaction/update_category_fee) lalu Mistral beri jawaban natural. Voice input opsional (Web Speech API, id-ID). Quick suggestion chips. Markdown rendering (react-markdown) untuk jawaban agent. Fallback API key Mistral (primary→backup) saat 429/401.
+    85→- PWA: public/manifest.json (installable, hijau), icon.svg + PNG 192/512/apple-touch (generate via sharp), public/sw.js (offline UI shell, network-first navigasi, SWR aset statis, tidak cache API), sw-register.tsx (production only).
+    86→- VERIFIKASI agent-browser end-to-end:
+    87→  - Dashboard render dengan data real, tanggal "Selasa, 23 Juni 2026" ✓
+    88→  - Input manual: PLN Pascabayar 49 × 3000 = Rp147.000, toast sukses, muncul di list ✓
+    89→  - AI read query "Berapa total PLN bulan ini?" → agent pakai get_transactions, jawab Rp147.000 dengan detail ✓
+    90→  - AI write query "tadi 8 pelanggan GoPay fee 2000" → agent deteksi GoPay belum ada, propose create_category (GoPay, grup E-Money, fee 2000) + create_transaction (8×2000=16000), tampilkan card konfirmasi → klik "Ya, Jalankan" → eksekusi, agent balas "Sudah dicatat: GoPay 8 pelanggan → Rp16.000" ✓
+    91→  - Kategori: 18 kategori (17 default + GoPay di grup E-Money) ✓
+    92→  - Laporan: Total Rp163.000, 2 transaksi, grafik batang 6 bulan (lazy-load recharts), Export CSV/PDF ✓
+    93→  - Impor: 3-step flow (Upload→Pemetaan→Konfirmasi), sample CSV, auto-detect kolom ✓
+    94→  - bun run lint PASS ✓
+    95→
+    96→Stage Summary:
+    97→- APLIKASI LENGKAP & TERVERIFIKASI end-to-end via agent-browser. Semua 6 fitur utama + AI Agent berfungsi.
+    98→- Stack final: Next.js 16 + Turso (@libsql/client langsung) + Mistral + Tailwind 4 + shadcn/ui + recharts (lazy) + papaparse + react-markdown.
+    99→- Performa: no framer-motion, recharts di-code-split, CSS transitions only, SW untuk offline shell.
+   100→- Credentials aman di server-side (.env / .env.local), tidak diekspos ke client.
+   101→
+   102→## Status Proyek
+   103→- STABIL & berfungsi penuh. Siap dipakai. Cron review tiap 15 menit akan jaga & lanjutkan pengembangan.
+   104→
+   105→## Risiko / Catatan
+   106→- Rotasi Turso token sebelum production (token sudah dishare di chat).
+   107→- Mistral free-tier bisa 429; sudah ada fallback key. Pertimbangkan upgrade tier jika dipakai intensif.
+   108→- Prisma schema.prisma sekarang hanya dokumentasi (tidak dipakai runtime); runtime pakai schema.sql + libsql client.
+   109→- Saran next phase: data seeding lebih banyak untuk demo, filter kategori di laporan, recurring expenses, export per kategori, PWA install prompt UI, optimasi bundle (analyze).
+   110→
+   111→---
+   112→Task ID: 7
+   113→Agent: main (orchestrator)
+   114→Task: Perbaikan model bisnis PPOB (Pendapatan Bersih vs Omzet) + perapian gaya tulisan AI Agent
+   115→
+   116→Work Log:
+   117→- Klarifikasi model bisnis dari user: "Pendapatan Bersih" = fee admin (qty × fee_per_unit) = METRIK UTAMA. "Pendapatan Kotor/Omzet" = total uang pembeli = qty × (nominal_tagihan + fee). "Pengeluaran" = hal terpisah, BUKAN pengurang kotor→bersih. Yang benar: Laba Operasional = Bersih - Pengeluaran.
+   118→- Migration: ALTER TABLE transactions ADD COLUMN bill_per_unit INTEGER NOT NULL DEFAULT 0 (nominal tagihan per pelanggan, opsional). Update prisma/schema.sql.
+   119→- API transactions POST: terima bill_per_unit. GET: kembalikan bill_per_unit.
+   120→- API summary: aggregate admin (SUM(total)), omzet (SUM(qty*(bill+fee))), bill. Breakdown & monthlyTrend sekarang punya field admin+omzet (bukan lagi total).
+   121→- API export CSV: kolom Tanggal,Kategori,Grup,Jumlah,Tagihan/Unit,Fee/Unit,Pendapatan Bersih,Omzet,Catatan + TOTAL BERSIH + TOTAL OMZET + LABA OPERASIONAL.
+   122→- API import: terima bill_per_unit di row.
+   123→- Form Transaksi: tambah input "Nominal Tagihan per Pelanggan (opsional)". Preview: "Pendapatan Bersih (fee admin)" + "Omzet (uang dari pembeli)" (muncul kalau bill diisi). Label "Fee per Unit" → "Fee per Pelanggan".
+   124→- List transaksi: tampilkan omzet per baris kalau bill > 0. Footer: "Total Pendapatan Bersih" + "Total Omzet".
+   125→- Dashboard: hero card = "Pendapatan Hari Ini (fee admin)". StatCard baru param omzet (tampil kalau omzet > admin). Breakdown pakai b.admin.
+   126→- Reports: 4 kartu (Pendapatan Bersih, Pendapatan Kotor/Omzet, Jumlah Transaksi, Laba Operasional/Pengeluaran). MonthlyChart 3 bar (hijau=Bersih, biru=Omzet, merah=Pengeluaran) dengan legend. Breakdown table: kolom Qty, Pendapatan Bersih, Omzet. Export PDF: tabel dgn kolom Tagihan+Bersih+Omzet, TOTAL BERSIH + TOTAL OMZET, LABA OPERASIONAL.
+   127→- Import: tambah field "Nominal Tagihan/Unit" (auto-detect header: tagihan/bill/nominal/nilai). Sample CSV tambah kolom Tagihan. Preview table: Bersih + Omzet.
+   128→- AI Agent system prompt DITULIS ULANG:
+   129→  - Section "MODEL BISNIS PPOB" eksplisit: bersih=admin=utama, kotor=omzet, pengeluaran=terpisah. "Jangan pernah bilang pendapatan bersih = kotor - pengeluaran".
+   130→  - Section "GAYA BAHASA": singkat, to-the-point, satu kalimat per topik, boleh list •, JANGAN berlebihan bold/italic, JANGAN emoji (kecuali ✓), jangan ---, jangan ulang pertanyaan user.
+   131→  - Tool get_summary: return pendapatan_bersih, omzet, transaksi.count, pengeluaran, laba_operasional.
+   132→  - Tool get_transactions: return pendapatan_bersih, bill_per_unit, omzet per baris.
+   133→  - Tool propose_action payload create_transaction: dukung bill_per_unit (kalau user sebut nominal tagihan).
+   134→  - Eksekusi proposal create_transaction: simpan bill_per_unit, log omzet kalau bill>0.
+   135→- AgentChat: ActionRow proposal tampilkan "Pendapatan Bersih" + "Omzet" kalau bill ada. Quick suggestions diupdate (contoh: "Catat 10 PDAM fee 2500 tagihan 150rb").
+   136→
+   137→VERIFIKASI agent-browser:
+   138→- Input manual: PLN Pascabayar, qty=10, fee=3000 (auto), bill=200000 → preview "Pendapatan Bersih Rp30.000" + "Omzet Rp2.030.000" → simpan sukses, list tampilkan omzet ✓
+   139→- AI "Rekap hari ini dong" → jawab: "Pendapatan bersih (fee admin): Rp105.000 • Omzet (uang dari pelanggan): Rp2.105.000 • Transaksi: 2 kali • Pengeluaran: Tidak ada • Laba operasional: Rp105.000 ✓" — terminologi BENAR, gaya rapi (1 emoji ✓, bold secukupnya, no ---) ✓
+   140→- Laporan: kartu Pendapatan Bersih Rp105.000 + Pendapatan Kotor Rp2.105.000 + Laba Operasional Rp105.000; grafik 6 bulan 3 bar (hijau/biru/merah) + legend; breakdown table kolom Bersih+Omzet ✓
+   141→- bun run lint PASS ✓
+   142→
+   143→Stage Summary:
+   144→- Model bisnis PPOB sekarang akurat: Bersih (fee admin) = metrik utama, Omzet = uang pembeli (opsional via nominal tagihan), Pengeluaran = terpisah, Laba Operasional = Bersih - Pengeluaran.
+   145→- Gaya tulisan AI Agent dirapikan: singkat, tanpa bold/emoji berlebihan, konsisten terminologi.
+   146→- Kolom "Nominal Tagihan per Pelanggan" opsional di form transaksi & impor CSV — tidak membebani kakek kalau tidak diisi, tapi membuka kemampuan hitung omzet.
+   147→- Semua section (Dashboard, Transaksi, Laporan, Impor) konsisten pakai terminologi baru.
+   148→
+   149→## Status Proyek
+   150→- STABIL & terverifikasi. Model bisnis akurat, AI rapi. Cron review tiap 15 menit tetap aktif.
+   151→
+   152→## Risiko / Saran next
+   153→- Data transaksi lama (sebelum perubahan) punya bill_per_unit=0 → omzetnya = bersih. Itu expected (belum pernah dicatat nominalnya).
+   154→- Bisa tambah fitur "edit transaksi" (saat ini hanya hapus) agar kakek bisa koreksi nominal tagihan di transaksi lama.
+   155→- Bisa tambah toggle "tampilkan omzet" di settings kalau kakek mau mode simple (tanpa omzet).
+   156→
+   157→---
+   158→Task ID: 8
+   159→Agent: main (orchestrator) — cron review
+   160→Task: QA pass + fitur baru (expenses UI, edit transaksi, quick-add) + styling polish (category colors)
+   161→
+   162→Work Log:
+   163→- QA awal via agent-browser: dashboard, transaksi, kategori, laporan, impor, settings semua berfungsi. Ditemukan GAP: toggle "Catat pengeluaran operasional" ON di Settings, tapi TIDAK ADA UI untuk menambah pengeluaran. Expense cards tampil di dashboard tapi 0 karena tidak bisa diinput.
+   164→- [BUG/GAP FIXED] Buat ExpensesSection.tsx baru: form catat pengeluaran (tanggal, jumlah besar, keterangan + quick-label chips: Listrik tempat, Bensin ke bank, Internet, dll) + list dengan filter tanggal, hapus dengan konfirmasi. Warna destructive (merah) untuk diferensiasi dari pendapatan.
+   165→- Update store.ts: tambah 'expenses' ke SectionId.
+   166→- Update AppShell.tsx: fetch settings sync expensesEnabled ke store; nav "Pengeluaran" muncul kondisional (sidebar desktop + bottom nav mobile 6-slot saat aktif); render ExpensesSection. Fallback ke transactions kalau expenses dimatikan saat sedang di section expenses.
+   167→- [FEATURE] Edit transaksi: API PATCH /api/transactions/[id] (qty, fee, bill, date, note + recompute total). UI: tombol edit (ikon Pencil) di setiap baris TransactionList → EditTransactionDialog dengan field editable + preview Bersih/Omzet real-time. Invalidation query setelah save.
+   168→- [FEATURE] Quick-add shortcuts di Dashboard: section "Akses Cepat" menampilkan 6 kategori teratas (berdasarkan breakdown bulan ini, fallback ke kategori populer PLN/PDAM/BPJS/Pulsa). Klik → QuickAddDialog minimal (tanggal, qty besar, fee auto dari kategori, bill opsional, preview Bersih). Tombol simpan menampilkan nominal. 1-klik catat transaksi tanpa buka form penuh.
+   169→- [STYLING] Sistem warna kategori (src/lib/category-colors.ts): 10 grup PPOB dapat warna khas (Listrik=amber, Air=sky, Asuransi=emerald, Telko=violet, Pulsa=fuchsia, Multifinance=orange, Gas=blue, TV=rose, E-Money=cyan, Lainnya=slate) + helper getCategoryInitial (2 huruf). Diterapkan di: avatar transaksi (qty + inisial), breakdown dashboard (avatar + progress bar), recent transactions, quick-add buttons, group icon kategori.
+   170→- [STYLING] Dashboard breakdown: tambah progress bar relatif per kategori (width = admin/maxAdmin). Baris jadi lebih informatif & visual.
+   171→- [STYLING] Quick-add buttons: avatar berwarna per grup + label + fee default, hover shadow.
+   172→
+   173→VERIFIKASI agent-browser:
+   174→- Dashboard: Akses Cepat tampil dengan 6 kategori berwarna (PP=PLN Pascabayar, PD=PDAM, BK=BPJS Kesehatan, dll) ✓
+   175→- Quick-add PDAM: klik → dialog "Catat Cepat · PDAM", isi qty=5, fee auto 2500, preview "Pendapatan Bersih Rp12.500", Simpan → toast "PDAM dicatat" ✓
+   176→- Expenses section: nav "Pengeluaran" tampil (toggle on). Klik Catat → form, isi 20000 + chip "Bensin ke bank", Simpan → muncul di list "-Rp20.000" ✓
+   177→- Dashboard setelah expense: Pendapatan Rp117.500 (3 transaksi), Pengeluaran Hari Ini -Rp20.000 ✓
+   178→- Edit transaksi: klik edit PDAM → dialog "Edit Transaksi · PDAM", ubah qty 5→8, preview Rp20.000, Simpan → toast "Transaksi diperbarui", list update "8 × Rp2.500 = +Rp20.000" ✓
+   179→- Laporan: Pendapatan Bersih Rp125.000, Pendapatan Kotor Rp2.125.000, Laba Operasional Rp105.000 (125k−20k), breakdown table PLN Rp105.000 + PDAM Rp20.000 ✓
+   180→- bun run lint PASS ✓
+   181→
+   182→Stage Summary:
+   183→- 3 fitur baru: Expenses management UI (menutup gap fungsional), Edit transaksi (koreksi tanpa hapus-ulang), Quick-add shortcuts (catat 1 klik).
+   184→- Styling polish: sistem warna kategori 10 grup + progress bar breakdown + avatar inisial — pengenalan visual jauh lebih cepat.
+   185→- Semua fitur terverifikasi end-to-end via agent-browser.
+   186→
+   187→## Status Proyek
+   188→- STABIL & lebih lengkap. Gap fungsional expenses tertutup. UX lebih cepat (quick-add + edit). Visual lebih kaya (warna kategori).
+   189→
+   190→## Risiko / Saran next
+   191→- Mobile bottom-nav jadi 6 slot saat expenses on — masih muat tapi agak rapat di layar kecil. Pertimbangkan sembunyikan "Kategori" di mobile saat expenses on, atau pakai "More" menu.
+   192→- Quick-add saat ini tidak ada input nominal tagihan di tampilan awal (ada tapi opsional). Bisa default tampilkan bill field jika kategori biasanya punya tagihan (PLN, PDAM).
+   193→- Bisa tambah: recurring expenses (pengeluaran tetap bulanan), filter kategori di laporan, export per kategori, PWA install prompt UI, data backup/restore.
+   194→- Transaksi lama (sebelum kolom bill) punya bill=0 → omzet=bersih. Expected.
+   195→
+   196→---
+   197→Task ID: 9
+   198→Agent: main (orchestrator) — cron review
+   199→Task: QA pass + fitur baru (RupiahInput, date presets, PWA install prompt, Tutup Buku nudge) + styling polish (grouped transactions, hover lift, hero pattern)
+   200→
+   201→Work Log:
+   202→- QA awal: dashboard, laporan, transaksi semua stabil. Tidak ada bug runtime. Lint PASS.
+   203→- [FEATURE] RupiahInput reusable (src/components/app/RupiahInput.tsx): input angka rupiah yang menampilkan pemisah ribuan SAAT mengetik (1500 → "1.500"). Value/onChange tetap digit mentah. Prefix "Rp" opsional di dalam input. Diterapkan di: form Transaksi (fee + bill), EditTransactionDialog (fee + bill), QuickAddDialog (fee + bill), ExpensesSection (amount). Besar manfaat UX untuk lansia — angka besar jelas terbaca.
+   204→- [FEATURE] Date range presets di Laporan: 6 tombol cepat (Hari Ini, 7 Hari, 30 Hari, Minggu Ini, Bulan Ini, Bulan Lalu) dengan highlight preset aktif. setRangePreset diperluas dengan today/7d/30d/week/lastMonth. activePreset auto-deteksi untuk highlight tombol yang cocok.
+   205→- [FEATURE] PWA Install Prompt (src/components/app/InstallPrompt.tsx): banner dismissible "Pasang GriyaLapor" yang muncul saat beforeinstallprompt event fire. Tombol "Pasang" (trigger install) + "Nanti saja" (dismiss + localStorage). Animate slide-in. Dipasang di AppShell.
+   206→- [FEATURE] Dashboard "Tutup Buku" nudge: card amber yang muncul kalau today.count === 0 — "Belum ada catatan hari ini, Yuk catat transaksi hari ini sebelum lupa" + tombol Catat. Mengingatkan kakek untuk tutup buku harian.
+   207→- [STYLING] Transactions grouped by date: list transaksi sekarang dikelompokkan per tanggal dengan header sticky (formatLongDate "Selasa, 23 Juni 2026") + total per hari. Dot indicator hijau untuk hari ini. Layout ledger-style lebih mudah dipindai.
+   208→- [STYLING] Card hover lift: quick-add buttons & quick links dapat hover:-translate-y-0.5 + hover:shadow-md untuk feedback tactile.
+   209→- [STYLING] Hero card decorative pattern: overlay radial-gradient dot pattern (opacity 10%) di hero card pendapatan — subtle visual interest tanpa mengganggu readability.
+   210→
+   211→VERIFIKASI agent-browser:
+   212→- Form Transaksi: pilih PLN Pascabayar → fee auto "3.000" (formatted), ketik bill 200000 → tampil "200.000" ✓
+   213→- Laporan: 6 preset tombol tampil, klik "7 Hari" → Dari 2026-06-17 Sampai 2026-06-23 ✓
+   214→- Transaksi: list grouped "Selasa, 23 Juni 2026" + total per hari ✓
+   215→- Dashboard: Akses Cepat + breakdown + hero pattern render ✓
+   216→- bun run lint PASS ✓
+   217→
+   218→Stage Summary:
+   219→- 4 fitur baru: RupiahInput (format ribuan real-time), date presets Laporan (6 rentang cepat), PWA Install Prompt, Tutup Buku nudge.
+   220→- Styling polish: transactions grouped by date (ledger style), card hover lift, hero decorative pattern.
+   221→- UX lansia meningkat signifikan: angka rupiah jelas terbaca saat input, rentang tanggal 1-klik, pengingat catat harian, install ke HP mudah.
+   222→
+   223→## Status Proyek
+   224→- STABIL & lebih kaya fitur. UX semakin ramah lansia. Lint PASS, semua terverifikasi.
+   225→
+   226→## Risiko / Saran next
+   227→- RupiahInput saat ini tidak menyimpan posisi kursor di tengah (selalu di akhir) — cukup untuk input angka, tapi kalau ada edit di tengah bisa awkward. Low priority.
+   228→- Install Prompt hanya muncul di browser yang support beforeinstallprompt (Chrome/Edge/Android). Safari iOS butuh instruksi manual "Add to Home Screen" — bisa tambah info card khusus iOS.
+   229→- Bisa tambah: recurring expenses, filter kategori di laporan, data backup/restore JSON, search transaksi by amount range, dark mode refinement.
+   230→- Mobile bottom-nav 6-slot saat expenses on masih agak rapat — pertimbangkan "More" menu.
+   231→
+   232→---
+   233→Task ID: 10
+   234→Agent: main (orchestrator) — user clarification
+   235→Task: Perbaikan model omzet sesuai sistem GriyaBayar — ganti bill_per_unit (per-pelanggan) → total_paid (total uang pembeli)
+   236→
+   237→Work Log:
+   238→- Klarifikasi user: di sistem GriyaBayar, tiap IDPEL nominalnya BEDA-BEDA. User mau input TOTAL uang dari pembeli (bukan per-pelanggan). Fee admin SUDAH INCLUDE di total itu. Contoh: 30 IDPEL, total 14 juta → bersih=30×3k=90k, omzet=14 juta.
+   239→- Sebelumnya: pakai bill_per_unit (nominal per pelanggan, asumsi sama semua) → omzet = qty×(bill+fee). Tidak realistis karena tiap pelanggan beda.
+   240→- Migration: ALTER TABLE transactions ADD COLUMN total_paid INTEGER NOT NULL DEFAULT 0. UPDATE data lama: SET total_paid = qty*(bill_per_unit+fee_per_unit) WHERE bill_per_unit>0 AND total_paid=0 (1 baris dimigrate). Kolom bill_per_unit tetap untuk kompatibilitas tapi deprecated.
+   241→- Update schema.sql: dokumentasi total_paid = OMZET (fee include), bill_per_unit deprecated.
+   242→- API transactions POST: terima total_paid. GET: kembalikan total_paid. PATCH [id]: terima total_paid.
+   243→- API summary: omzet = SUM(total_paid) (bukan lagi qty×(bill+fee)). Breakdown & monthlyTrend sama.
+   244→- API export CSV: kolom Tanggal,Kategori,Grup,Jumlah,Fee/Unit,Pendapatan Bersih,Omzet,Catatan. (kolom Tagihan/Unit dihilangkan).
+   245→- API import: terima total_paid di row.
+   246→- Form Transaksi: field "Nominal Tagihan per Pelanggan (opsional)" → "Total Dibayar Pembeli / Omzet (opsional)". Helper text: "Total seluruh uang dari pembeli (sudah termasuk fee). Tiap pelanggan beda nominal, jadi dijumlahkan. Boleh dikosongkan". Preview: Pendapatan Bersih (qty×fee) + Omzet (total_paid langsung).
+   247→- EditTransactionDialog: field sama, ganti bill → total_paid.
+   248→- QuickAddDialog: field "Tagihan/Pelanggan (opsional)" → "Total Dibayar Pembeli (opsional)".
+   249→- TransactionList: omzet per baris = t.total_paid (bukan dihitung). grandOmzet = SUM(total_paid).
+   250→- Dashboard: Summary interface hapus field bill, omzet dari total_paid. recentTransactions pakai total_paid.
+   251→- Reports: Txn interface tambah total_paid. totalOmzet = SUM(total_paid). breakdown omzet = SUM(total_paid). Export PDF: omzet = t.total_paid.
+   252→- Import: field 'bill' → 'total_paid', label "Total Dibayar Pembeli (Omzet)", detect header "total.*dibayar|omzet|total_paid|uang.*masuk". Sample CSV: kolom "Total Dibayar" = 14000000. Preview table: hapus kolom Tagihan, kolom Omzet = totalPaid.
+   253→- AI Agent system prompt DITULIS ULANG: "Omzet = total uang yang masuk dari pembeli = total_paid (diinput user langsung, karena tiap pelanggan nominalnya beda-beda)". Contoh eksplisit: "30 idpel PLN admin 3000, total 14 juta → qty=30, fee_per_unit=3000, total_paid=14000000. Bersih=90.000, Omzet=14.000.000".
+   254→- AI tool get_transactions: return total_paid (bukan bill_per_unit). get_summary: omzet = SUM(total_paid). propose_action: payload create_transaction dukung total_paid. Eksekusi: simpan total_paid.
+   255→- AgentChat ActionRow: omzetInfo pakai total_paid.
+   256→
+   257→VERIFIKASI agent-browser:
+   258→- Form: pilih PLN Pascabayar, qty=30, fee=3.000 (auto), Total Dibayar=14.000.000 → preview "Pendapatan Bersih Rp90.000" + "Omzet Rp14.000.000" → Simpan sukses, list tampilkan "Omzet Rp14.000.000 +Rp90.000" ✓
+   259→- AI "Rekap hari ini dong" → jawab: "Pendapatan Bersih Rp215.000 (4 transaksi) • Omzet Rp16.030.000 (uang dari pelanggan) • Pengeluaran Operasional Rp20.000 • Laba Operasional Rp195.000" + Rincian "30 × Rp3.000 = Rp90.000 (uang pelanggan: Rp14.000.000)" ✓ — SAMA PERSIS dengan contoh user.
+   260→- Dashboard: Omzet Rp2.030.000 (data lama termigrasi) + transaksi baru ✓
+   261→- bun run lint PASS ✓
+   262→
+   263→Stage Summary:
+   264→- Model bisnis PPOB sekarang SESUAI sistem GriyaBayar: user input qty + fee (auto dari kategori) + total uang dari pembeli (omzet). Sistem hitung bersih = qty×fee otomatis. Omzet = total_paid langsung.
+   265→- Field "Nominal Tagihan per Pelanggan" (asumsi nominal sama) diganti "Total Dibayar Pembeli" (realistis, tiap pelanggan beda nominal dijumlahkan user).
+   266→- Fee admin sudah include di total_paid (sesuai GriyaBayar), bukan ditambah di luar.
+   267→- AI agent paham model baru, jawaban rekap akurat & sesuai ekspektasi user.
+   268→
+   269→## Status Proyek
+   270→- STABIL & model bisnis final sesuai sistem GriyaBayar. Lint PASS, terverifikasi end-to-end.
+   271→
+   272→## Risiko / Saran next
+   273→- Kolom bill_per_unit masih ada di DB (deprecated, semua nilai 0 setelah migrate). Bisa drop kolom kalau ingin bersih, tapi low-risk dibiarkan.
+   274→- Transaksi lama yang tidak punya total_paid (data test) akan tampil omzet=0 / omzet=bersih. Expected.
+   275→- Bisa tambah: input "uang diteruskan ke penyedia" = total_paid - (qty×fee) sebagai info turunan (opsional).
+   276→- Bisa tambah validasi: total_paid harus >= qty×fee (omzet minimal = bersih, karena fee include).
+   277→
+   278→---
+   279→Task ID: 11
+   280→Agent: main (orchestrator) — user feature request + full QA pass
+   281→Task: Tambah field nama pelanggan (customer_name) ke transaksi + laporan, fitur Akses Cepat customizable, stress test protections, full QA pass 6 area
+   282→
+   283→Work Log:
+   284→- [FEATURE] Field "Nama Pelanggan" (customer_name) di seluruh aplikasi:
+   285→  - DB: ALTER TABLE transactions ADD COLUMN customer_name TEXT (idempotent migration di scripts/migrate.ts via PRAGMA table_info)
+   286→  - API: transactions GET/POST/PATCH, summary (recent + topCustomers aggregate), export CSV (kolom Pelanggan), import (customer_name field + detect header "pelanggan|customer|atas nama|konsumen"), agent (get_transactions return customer_name, propose_action payload deskripsi + eksekusi simpan customer_name, system prompt aturan #7)
+   287→  - New API /api/customers — daftar pelanggan unik dengan statistik (count, admin, omzet, qty, first/last_date) untuk filter & tracking
+   288→  - UI TransactionsSection: form input "Nama Pelanggan (opsional)" + preview pelanggan, list tampilkan customer_name, search termasuk pelanggan, EditTransactionDialog field customer_name
+   289→  - UI DashboardSection: QuickAddDialog field customer_name, recent transactions tampilkan customer, kartu baru "Pelanggan Teratas Bulan Ini" (top 5, rank ★, progress bar)
+   290→  - UI ReportsSection: filter pelanggan (chip buttons), kartu "Pelanggan Teratas" (klik untuk filter, rank medal emas/perak/perunggu), print HTML kolom Pelanggan
+   291→  - UI ImportSection: field customer_name, preview table kolom Pelanggan, sample CSV kolom Pelanggan, sinonim "Pelanggan → Customer/Atas Nama/Konsumen"
+   292→  - UI AgentChat: ActionRow tampilkan "Pelanggan" di proposal, quick suggestions update ("dari Pak Budi", "pelanggan Bu Siti")
+   293→
+   294→- [FEATURE] Akses Cepat customizable (src/components/app/ManageQuickAccess.tsx):
+   295→  - Dialog "Kelola Akses Cepat" dengan add/remove/reorder (arrow up/down), edit fee khusus per item (override default_fee kategori), reset ke mode otomatis
+   296→  - Setting quick_access disimpan sebagai JSON di tabel settings (key=quick_access)
+   297→  - Dashboard baca settings.quick_access: jika ada → mode kustom (urutan + fee override), jika kosong → mode otomatis (kategori teratas bulan ini)
+   298→  - Tombol "Kelola" (icon Settings2) di kartu Akses Cepat, indikator "kustom" badge amber jika fee di-override
+   299→  - QuickAddDialog terima feeOverride prop → fee pre-filled pakai override, bukan default_fee
+   300→
+   301→- [STRESS TEST] Proteksi double-submit & double-click:
+   302→  - TransactionsSection submit(): ref guard submittingRef.current — anti triple/quadruple click (verified: 4x click → hanya 1 transaksi tersimpan)
+   303→  - Delete buttons (Transactions, Expenses, Categories): disabled={mutation.isPending} + label "Menghapus..." saat pending
+   304→  - Submit buttons sudah ada disabled={isPending} (form Transaksi, Pengeluaran, Impor, Edit)
+   305→
+   306→- [QA FIX] Accessibility & polish:
+   307→  - DialogContent aria-describedby={undefined} di 4 dialog (EditTransaction, QuickAdd, ManageQuickAccess, CategoryDialog) — hilangkan warning "Missing Description"
+   308→  - MonthlyChart ResponsiveContainer debounce={50} — kurangi warning width(0) saat mount (cosmetic, chart render OK 908x342px)
+   309→
+   310→VERIFIKASI agent-browser (full QA pass 6 area):
+   311→1. Logic Keuangan: form qty=5 fee=3000 → preview Bersih Rp15.000 → tersimpan total=15000 ✓; summary hari ini/minggu/bulan akurat; undo benar hapus transaksi terakhir (id 8→7)
+   312→2. AI Agent: "catat 8 PLN pascabayar admin 3000 dari Bu Siti" → parsing benar (qty=8, fee=3000, customer=Bu Siti) → proposal "Konfirmasi Aksi" muncul → confirm → tersimpan (Bu Siti, 24000) ✓; error handling ramah
+   313→3. Database & CRUD: tambah/edit/hapus semua tersimpan ke Turso + refresh UI ✓; customer API return 2 pelanggan
+   314→4. UI & Responsivitas: desktop sidebar (nav0 display=flex) + mobile bottom nav (nav1 md:hidden display=none di desktop) ✓; dark mode toggle works (html class dark) + readability OK; empty state "Belum ada transaksi" ✓; loading skeleton ✓
+   315→5. Edge Cases: empty submit → toast "Pilih kategori dulu" + form tetap open ✓; empty date range → total 0 clean; kategori 0 transaksi → tampil normal di breakdown
+   316→6. PWA: manifest.json 200, sw.js 200, icon.svg 200; SW register hanya di production (NODE_ENV=production) — dev skip intentional
+   317→
+   318→Stage Summary:
+   319→- Field nama pelanggan terintegrasi end-to-end: form → DB → list → dashboard → laporan → export CSV/PDF → AI agent → import CSV. Opsional (wajib hanya kategori, qty, fee, total_paid).
+   320→- Fitur Akses Cepat sekarang fully customizable: user bisa atur urutan, tambah/hapus kategori, dan set fee admin khusus per item. Tersimpan di settings, sync dengan QuickAddDialog.
+   321→- Stress test passed: quadruple-click submit → 1 transaksi (ref guard); delete buttons disabled saat pending.
+   322→- Full QA 6 area PASSED. Lint PASS. Dark mode works. Responsive (sidebar/bottom-nav switch). Accessibility warnings fixed.
+   323→
+   324→## Status Proyek
+   325→- STABIL & fitur lengkap. Customer tracking + Akses Cepat customizable + stress-test hardened. Lint PASS, QA terverifikasi end-to-end.
+   326→
+   327→## Risiko / Saran next
+   328→- Chart width(0) warning masih muncul 2x saat mount Reports (cosmetic, recharts known issue, chart render OK) — low priority
+   329→- SW hanya register di production — saat deploy akan aktif otomatis
+   330→- Bisa tambah: search pelanggan by name di Transactions (saat ini filter client-side sudah include customer), export per pelanggan, recurring expenses, data backup/restore JSON, iOS install instructions
+   331→
+   332→---
+   333→Task ID: 12
+   334→Agent: main (orchestrator) — cron review round
+   335→Task: Data Backup/Restore JSON, Search by amount range, iOS install instructions, styling polish, full QA
+   336→
+   337→Work Log:
+   338→- [BUGFIX] Backup API validation: fix `data.categories` check — API sekarang accept baik full backup envelope ({app,version,data:{...}}) maupun bare {categories,...}. Sebelumnya restore selalu gagal "Format backup tidak valid" karena component kirim full envelope tapi API expect bare. Sekarang auto-detect via `envelope?.data?.categories ? envelope.data : envelope`.
+   339→- [FEATURE] Data Backup/Restore JSON (src/components/app/BackupRestore.tsx + /api/backup):
+   340→  - GET /api/backup — export semua data (categories, transactions, expenses, settings) sebagai JSON dengan metadata (app, version, exported_at, counts). Filename otomatis `griyalapor-backup-YYYY-MM-DD.json`.
+   341→  - POST /api/backup — restore dengan 2 mode: "merge" (aman, skip duplikat by ID, data lama tetap) atau "replace" (hapus semua data lama lalu impor). Konfirmasi dialog dengan radio button pilih mode, warning destructive untuk replace.
+   342→  - UI di SettingsSection: card "Database" dengan 2 section — Backup (unduh JSON) dan Restore (pilih file JSON → preview counts → konfirmasi mode → restore). Invalidate semua query setelah restore agar UI refresh.
+   343→  - Verifikasi: backup 5.2KB JSON (18 kategori, 5 transaksi, 1 pengeluaran, 3 settings) ✓; restore merge mode → 24 skipped (sudah ada by ID), 3 settings upserted ✓
+   344→- [FEATURE] Search transactions by amount range (TransactionsSection):
+   345→  - Toggle "Filter Nominal" (icon SlidersHorizontal) — collapsible panel dengan min/max RupiahInput.
+   346→  - Filter client-side berdasarkan `total` (pendapatan bersih). Indikator dot primary saat filter aktif.
+   347→  - Tombol Reset untuk clear min/max. Counter "X dari Y transaksi" saat ada filter aktif.
+   348→  - Deskripsi dinamis: "Menampilkan transaksi dengan bersih Rp50.000 – tanpa batas".
+   349→  - Verifikasi: min 50000 → 2 dari 5 transaksi tampil ✓; reset → 5 transaksi kembali ✓
+   350→- [FEATURE] iOS Safari install instructions (src/components/app/IosInstallInstructions.tsx):
+   351→  - Card instruksi 3-langkah (Share → Add to Home Screen → Tambah) dengan icon inline.
+   352→  - Auto-deteksi iOS Safari (bukan standalone = belum di-install) via userAgent + matchMedia. Dismissable (localStorage `gl-ios-install-dismissed`).
+   353→  - Dipasang di AppShell, hanya render di section Dashboard. Tidak tampil di non-iOS atau saat sudah di-install.
+   354→- [STYLING] Polish visual:
+   355→  - globals.css: tambah utilities `.focus-ring`, `.card-hover`, `.text-gradient-primary`, `.shimmer` (skeleton animation), `.tabular-nums`. Scrollbar thumb hover state.
+   356→  - Dashboard hero card: shadow-lg (dari shadow-md), blur glow orb decorative, backdrop-blur pada icon container & buttons, drop-shadow pada angka utama, relative positioning untuk layering.
+   357→  - StatCard: highlight card dapat blur glow orb decorative + shadow-sm, content wrapped relative.
+   358→  - Transaction list rows: border transparent → hover border-border/50 + shadow-sm, category avatar shadow-sm, customer name sebagai pill badge (bg-primary/10 text-primary icon User), amount text-lg font-bold, edit/delete buttons dengan hover bg (primary/10, destructive/10) + rounded-lg.
+   359→- [QA FIX] Dialog accessibility: DialogContent di dialog.tsx sekarang default `aria-describedby={undefined}` — suppress Radix warning "Missing Description" globally tanpa perlu pass prop manual di setiap dialog.
+   360→
+   361→VERIFIKASI agent-browser:
+   362→- Dashboard render ✓ (hero gradient + glow, statcards, akses cepat dengan Kelola, top customers)
+   363→- Transactions: Filter Nominal toggle ✓, min 50000 → 2/5 rows ✓, reset → 5 rows ✓, customer name pill badge tampil ✓
+   364→- Settings: Backup Data + Restore Data section ✓, Unduh Backup JSON button ✓
+   365→- Backup API: GET 200 (5.2KB JSON, 18 cat/5 txn/1 exp/3 set) ✓; POST merge → 24 skipped + 3 settings upserted ✓
+   366→- Lint PASS ✓, no dev log errors ✓
+   367→
+   368→Stage Summary:
+   369→- 3 fitur baru: Backup/Restore JSON (2 mode aman & berbahaya), Search by amount range (collapsible filter), iOS Safari install instructions (auto-detect).
+   370→- Styling polish: hero card glow + backdrop-blur, statcard decorative orbs, transaction rows dengan customer pill badge + hover shadow, global utilities (focus-ring, card-hover, shimmer, gradient-text).
+   371→- Bug fix: Backup API validation sekarang accept full envelope & bare object.
+   372→- Accessibility: Dialog warning suppressed globally via dialog.tsx default aria-describedby.
+   373→
+   374→## Status Proyek
+   375→- STABIL & fitur makin lengkap. Backup/restore keamanan data, filter nominal untuk tracking presisi, iOS install untuk aksebilitas mobile Apple. Lint PASS, QA terverifikasi.
+   376→
+   377→## Risiko / Saran next
+   378→- iOS install card hanya tampil di iOS Safari asli (agent-browser tidak simulate iOS, jadi tidak terlihat di QA desktop — expected).
+   379→- Backup replace mode berbahaya — sudah ada konfirmasi dialog dengan warning, tapi bisa tambah double-confirm (ketik "HAPUS") kalau mau ekstra aman.
+   380→- Bisa tambah: recurring expenses (pengeluaran tetap bulanan auto-generate), export laporan per pelanggan, notifikasi push untuk tutup buku harian, multi-currency.
+   381→- Chart width(0) warning masih ada 2x saat mount Reports (cosmetic, recharts known issue).
+   382→
+   383→---
+   384→Task ID: 13
+   385→Agent: main (orchestrator) — user feature request (recorder + font + responsive)
+   386→Task: Fitur "Dicatat Oleh" (siapa yang mencatat) dengan shortcut anggota keluarga cloud-sync, font kecil option, responsive table fix, safety audit
+   387→
+   388→Work Log:
+   389→- [SAFETY AUDIT] Verifikasi logic keuangan end-to-end:
+   390→  - total = qty × fee_per_unit (konsisten di POST transactions, agent executeProposal, import)
+   391→  - summary: SUM(total) = admin/bersih, SUM(total_paid) = omzet, date range filter akurat (today/week/month)
+   392→  - undo (DELETE ?last=1): hapus by `ORDER BY id DESC LIMIT 1` — benar hapus transaksi terbaru
+   393→  - Tidak ada double-count: setiap range (today/week/month) query terpisah dengan WHERE date >= ? AND date <= ?
+   394→  - Data tersimpan di Turso cloud (libSQL), sync semua device, survive redeploy
+   395→
+   396→- [FEATURE] "Dicatat Oleh" (recorded_by) — siapa anggota keluarga yang mencatat transaksi:
+   397→  - DB: ALTER TABLE transactions ADD COLUMN recorded_by TEXT (idempotent migration)
+   398→  - API: transactions GET/POST/PATCH, summary (recent), export CSV (kolom "Dicatat Oleh"), import, agent (get_transactions + propose_action + execute), backup/restore — semua dukung recorded_by
+   399→  - src/lib/family.ts: hook useFamilyMembers (CRUD anggota, stored di settings.family_members JSON di cloud DB) + useLastRecorder (default ke recorder terakhir, persist per-device via localStorage)
+   400→  - src/components/app/RecorderPicker.tsx: shortcut buttons anggota keluarga (Yangti/Yangkung/Mama/Papa default) + tombol "Kelola" untuk tambah/hapus anggota. Anggota tersimpan di cloud, sync semua device.
+   401→  - Form Transaksi: RecorderPicker dengan default ke last-used recorder, simpan lastRecorder on success
+   402→  - EditTransactionDialog: RecorderPicker compact
+   403→  - QuickAddDialog (Dashboard): RecorderPicker compact + default last-used
+   404→  - Verifikasi: pilih "Yangti" → submit → API return recorded_by: "Yangti" ✓; anggota tersimpan di cloud settings ✓
+   405→
+   406→- [FEATURE] Font size "Kecil" + default lebih kecil:
+   407→  - globals.css: tambah `html[data-font-size="small"] { font-size: 14px; }`, ubah default html ke 16px
+   408→  - Skala baru: Kecil (14px), Sedang (16px, default), Besar (18px), Sangat Besar (20px) — sebelumnya mulai dari 17px
+   409→  - Settings: tambah opsi "Kecil (14px) — compact", ubah default ke "Sedang (16px)"
+   410→  - providers.tsx: default localStorage 'medium' (sebelumnya 'large')
+   411→
+   412→- [RESPONSIVE] Fix table overflow on mobile:
+   413→  - Reports breakdown table: header "Pendapatan Bersih" → "Bersih" (lebih compact), tambah whitespace-nowrap, min-w pada kolom Kategori, Progress bar w-24 di mobile
+   414→  - Table component sudah punya overflow-x-auto wrapper, jadi tabel scroll horizontal dalam container (tidak overflow page)
+   415→  - Qty column hidden di mobile sangat kecil (xs:table-cell), info qty digabung ke subtitle mobile
+   416→
+   417→- [DB] recurring_expenses table + expenses.recurring_id column ditambah ke schema (untuk fitur recurring expenses di masa depan). Migration idempotent.
+   418→
+   419→VERIFIKASI agent-browser:
+   420→- Form Transaksi: "Dicatat Oleh" dengan shortcut Yangti/Yangkung/Mama/Papa + Kelola ✓
+   421→- Pilih Yangti → submit → API return recorded_by: "Yangti" ✓
+   422→- Kelola dialog: tambah/hapus anggota, tersimpan di cloud (settings.family_members) ✓
+   423→- Font: default medium (16px), opsi Kecil (14px) tersedia ✓
+   424→- Reports table: no overflow (scrollWidth = clientWidth), header compact ✓
+   425→- Lint PASS, no dev log errors ✓
+   426→
+   427→Stage Summary:
+   428→- Fitur "Dicatat Oleh" lengkap: shortcut 4 anggota default (Yangti/Yangkung/Mama/Papa) + kelola anggota (cloud-sync). Default ke recorder terakhir per-device. Tersimpan di DB cloud, survive redeploy.
+   429→- Font lebih kecil: opsi Kecil (14px) tersedia, default Sedang (16px) — sebelumnya terlalu besar (17px+).
+   430→- Responsive: table header compact, whitespace-nowrap, overflow-x-auto — tidak offside di mobile.
+   431→- Safety: logic keuangan terverifikasi konsisten (total=qty×fee, summary akurat, undo benar, no double-count).
+   432→
+   433→## Status Proyek
+   434→- STABIL & aman untuk dipakai keluarga. Recorder feature cloud-sync, font responsive, table tidak overflow. Lint PASS, QA terverifikasi.
+   435→
+   436→## Risiko / Saran next
+   437→- recurring_expenses table sudah ada di DB (belum ada UI) — bisa implement auto-generate pengeluaran tetap bulanan
+   438→- Backup replace mode bisa tambah double-confirm (ketik "HAPUS") untuk ekstra aman
+   439→- Bisa tambah: filter transaksi by recorded_by (siapa yang catat), dashboard "kontribusi per anggota", export per pelanggan
+   440→- iOS install card hanya tampil di iOS Safari asli (keluarga semua Android, jadi PWA install via Chrome/Android works via InstallPrompt)
+   441→

@@ -1,0 +1,28 @@
+{
+  "choices": [
+    {
+      "finish_reason": "stop",
+      "index": 0,
+      "message": {
+        "content": "### 1. Text Labels and Headings (Exact Wording)  \n- \"5x\"  \n- \"PP\"  \n- \"Rp 3.000\"  \n- \"Rp 15.000\"  \n- \"Shift\"  \n- \"pagi\"  \n- \"Omzet\"  \n- \"Rp 1.500.000\"  \n- \"Total Pendapatan\"  \n- \"Bersih (5 transaksi)\"  \n- \"Rp 70.500\"  \n- \"Total Omzet (uang pembeli)\"  \n- \"Rp 4.300.000\"  \n- \"Beranda\"  \n- \"Transaksi\"  \n- \"Pengelua...\" (truncated)  \n- \"Kategori\"  \n- \"Laporan\"  \n- \"Pengaturan\"  \n\n\n### 2. Transaction Rows  \n- **Category Name**: \"5x PP\" (displayed in a yellow circular badge with \"5x\" in orange and \"PP\" in red)  \n- **Badges/Pills**: None  \n- **Amount**: \"Rp 15.000\" (green text)  \n\n\n### 3. Filter Chips/Pills Row  \n- No filter chips/pills row is present.  \n\n\n### 4. Truncated Text  \n- \"Pengelua...\" (truncated at the end, likely \"Pengeluaran\" or similar).  \n\n\n### 5. Horizontal Overflow Off the Right Edge  \n- No horizontal overflow is visible; all content fits within the 375px viewport.  \n\n\n### Additional Elements  \n- A green circular floating action button (FAB) with a white star icon (bottom-right).  \n- Bottom navigation bar with icons and labels: \"Beranda\" (home icon), \"Transaksi\" (list icon), \"Pengelua...\" (truncated, arrow icon), \"Kategori\" (tag icon), \"Laporan\" (chart icon), \"Pengaturan\" (gear icon).",
+        "role": "assistant"
+      }
+    }
+  ],
+  "created": 1782230534,
+  "id": "20260624000204b140f35483624ce7",
+  "model": "glm-4.6v",
+  "object": "chat.completion",
+  "request_id": "20260624000204b140f35483624ce7",
+  "usage": {
+    "completion_tokens": 408,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    },
+    "prompt_tokens": 1015,
+    "prompt_tokens_details": {
+      "cached_tokens": 7
+    },
+    "total_tokens": 1423
+  }
+}

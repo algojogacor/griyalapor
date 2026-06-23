@@ -36,6 +36,7 @@ import {
   ReceiptText,
   Users,
   User,
+  UserCircle,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -62,6 +63,7 @@ interface Txn {
   bill_per_unit: number
   total_paid: number
   customer_name: string | null
+  recorded_by: string | null
   note: string | null
   category_name: string
   category_group: string | null
@@ -139,9 +141,12 @@ export function ReportsSection() {
     queryFn: () => fetchJSON<{ customers: Customer[] }>(`/api/customers?${rangeParams}`),
   })
   const [customerFilter, setCustomerFilter] = useState<string>('') // '' = semua
+  const [recorderFilter, setRecorderFilter] = useState<string>('') // '' = semua
   const customers: Customer[] = custData?.customers ?? []
 
-  const txns = (txData?.transactions ?? []).filter((t) => !customerFilter || t.customer_name === customerFilter)
+  const txns = (txData?.transactions ?? [])
+    .filter((t) => !customerFilter || t.customer_name === customerFilter)
+    .filter((t) => !recorderFilter || (recorderFilter === '__none__' ? !t.recorded_by : t.recorded_by === recorderFilter))
   const expenses = expData?.expenses ?? []
 
   const totalAdmin = useMemo(() => txns.reduce((s, t) => s + t.total, 0), [txns]) // pendapatan bersih (fee admin)
@@ -377,6 +382,59 @@ export function ReportsSection() {
                   {c.name} <span className="opacity-60">({c.count})</span>
                 </button>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* Filter Dicatat Oleh — siapa yang mencatat transaksi */}
+        {(txData?.transactions ?? []).some((t) => t.recorded_by) && (
+          <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-2">
+            <Label className="text-sm font-medium flex items-center gap-1.5 shrink-0">
+              <UserCircle className="w-4 h-4" /> Dicatat Oleh:
+            </Label>
+            <div className="flex flex-wrap gap-2 flex-1">
+              <button
+                onClick={() => setRecorderFilter('')}
+                className={cn(
+                  'h-9 px-3 rounded-lg text-sm font-medium border transition-colors',
+                  recorderFilter === ''
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-card hover:bg-secondary text-foreground/80',
+                )}
+              >
+                Semua
+              </button>
+              {Array.from(new Set((txData?.transactions ?? []).map((t) => t.recorded_by).filter((x): x is string => !!x))).map((r) => {
+                const count = (txData?.transactions ?? []).filter((t) => t.recorded_by === r).length
+                return (
+                  <button
+                    key={r}
+                    onClick={() => setRecorderFilter(r)}
+                    className={cn(
+                      'h-9 px-3 rounded-lg text-sm font-medium border transition-colors max-w-[200px] truncate',
+                      recorderFilter === r
+                        ? 'bg-primary text-primary-foreground border-primary'
+                        : 'bg-card hover:bg-secondary text-foreground/80',
+                    )}
+                    title={`${r} · ${count} transaksi`}
+                  >
+                    {r} <span className="opacity-60">({count})</span>
+                  </button>
+                )
+              })}
+              {(txData?.transactions ?? []).some((t) => !t.recorded_by) && (
+                <button
+                  onClick={() => setRecorderFilter('__none__')}
+                  className={cn(
+                    'h-9 px-3 rounded-lg text-sm font-medium border transition-colors',
+                    recorderFilter === '__none__'
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'bg-card hover:bg-secondary text-foreground/80',
+                  )}
+                >
+                  Tidak dicatat
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -624,21 +682,21 @@ function StatCard({
   }[color]
 
   return (
-    <Card className={cn('p-4', dimmed && 'opacity-60')}>
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">{label}</p>
+    <Card className={cn('p-3 sm:p-4', dimmed && 'opacity-60')}>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs sm:text-sm text-muted-foreground leading-tight">{label}</p>
         {icon && (
-          <span className={cn('text-muted-foreground', colorClass)}>{icon}</span>
+          <span className={cn('text-muted-foreground shrink-0', colorClass)}>{icon}</span>
         )}
       </div>
       <div
         className={cn(
-          'text-xl lg:text-2xl font-bold mt-2 tabular-nums break-all',
+          'text-lg sm:text-xl lg:text-2xl font-bold mt-1.5 sm:mt-2 tabular-nums break-all leading-tight',
           colorClass,
         )}
       >
         {loading ? (
-          <Skeleton className="h-8 w-28" />
+          <Skeleton className="h-7 w-24 sm:h-8 sm:w-28" />
         ) : isCount ? (
           value
         ) : (
@@ -695,6 +753,7 @@ function buildPrintHTML(opts: {
         <td style="text-align:right">${fmt(t.total)}</td>
         ${omzetCell}
         <td>${esc(t.customer_name ?? '')}</td>
+        <td>${esc(t.recorded_by ?? '')}</td>
         <td>${esc(t.note ?? '')}</td>
       </tr>`
       },
@@ -803,12 +862,13 @@ function buildPrintHTML(opts: {
         <th style="text-align:right">Pendapatan Bersih</th>
         ${hasOmzet ? '<th style="text-align:right">Omzet</th>' : ''}
         <th>Pelanggan</th>
+        <th>Dicatat Oleh</th>
         <th>Catatan</th>
       </tr>
     </thead>
     <tbody>
-      ${txRows || `<tr><td colspan="${hasOmzet ? 10 : 8}" style="text-align:center;color:#888">Tidak ada transaksi</td></tr>`}
-      <tr class="total"><td colspan="${hasOmzet ? 7 : 6}">TOTAL PENDAPATAN BERSIH (FEE ADMIN)</td><td style="text-align:right">${fmt(totalAdmin)}</td>${hasOmzet ? '<td style="text-align:right">' + fmt(totalOmzet) + '</td>' : ''}<td></td><td></td></tr>
+      ${txRows || `<tr><td colspan="${hasOmzet ? 11 : 9}" style="text-align:center;color:#888">Tidak ada transaksi</td></tr>`}
+      <tr class="total"><td colspan="5">TOTAL PENDAPATAN BERSIH (FEE ADMIN)</td>${hasOmzet ? '<td></td>' : ''}<td style="text-align:right">${fmt(totalAdmin)}</td>${hasOmzet ? '<td style="text-align:right">' + fmt(totalOmzet) + '</td>' : ''}<td></td><td></td><td></td></tr>
     </tbody>
   </table>
 

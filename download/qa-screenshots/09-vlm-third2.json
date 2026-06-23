@@ -1,0 +1,28 @@
+{
+  "choices": [
+    {
+      "finish_reason": "stop",
+      "index": 0,
+      "message": {
+        "content": "### 1. Text Labels and Headings (Exact Wording)  \n- **Top Filter Button**: \"Filter Nominal\"  \n- **App Name**: \"GriyaLapor\"  \n- **App Subtitle**: \"Catatan Keuangan PPOB\"  \n- **Date Label**: \"Selasa, 23 Juni 2026\"  \n- **Total Amount**: \"Rp 70.500\"  \n- **Truncated Transaction 1**: \"PL...\"  \n- **Badge 1 Text**: \"Bu Si\"  \n- **Badge 2 Text**: \"Mam:\"  \n- **Transaction Amount**: \"+Rp 7.500\"  \n- **Quantity Text**: \"3 x\"  \n- **Sub-Amount 1**: \"Rp 2.500\"  \n- **Sub-Amount 2**: \"Omzet\"  \n- **Sub-Amount 3**: \"Rp 800.000\"  \n- **Truncated Transaction 2**: \"P...\"  \n- **Badge 3 Text**: \"Pa:\"  \n\n\n### 2. Transaction Rows (Category, Badges, Amount)  \n#### First Transaction Row  \n- **Category**: Truncated to \"PL...\" (likely \"PL...\" as full text is cut off).  \n- **Badges**:  \n  - 1st Badge: Light green pill with icon (person silhouette) and text \"Bu Si\".  \n  - 2nd Badge: Light gray pill with icon (person silhouette) and text \"Mam:\".  \n- **Amount**: \"+Rp 7.500\" (green, positive value).  \n- **Additional Details**:  \n  - Quantity: \"3 x\" (yellow pill with \"3x PP\" text).  \n  - Sub-amounts: \"Rp 2.500\", \"Omzet\", \"Rp 800.000\".  \n\n\n#### Second Transaction Row  \n- **Category**: Truncated to \"P...\" (likely \"P...\" as full text is cut off).  \n- **Badges**: 1 light gray pill with icon (person silhouette) and text \"Pa:\" (truncated).  \n- **Amount**: Not visible (truncated or cut off).  \n\n\n### 3. Filter Chips/Pills Row  \n- **Filter Button**: \"Filter Nominal\" (white pill with filter icon, top of screen).  \n- **No other filter chips** (e.g., \"Semua\", \"Yangti\", \"Mama\", \"Tidak ada\") are present.  \n\n\n### 4. Truncated Text  \n- \"PL...\" (first transaction category).  \n- \"P...\" (second transaction category).  \n- \"Bu Si\" (badge text, likely truncated from longer name).  \n- \"Mam:\" (badge text, likely truncated from longer name).  \n- \"Pa:\" (badge text, likely truncated from longer name).  \n\n\n### 5. Horizontal Overflow  \n- No horizontal overflow off the right edge (all elements fit within the 375px viewport).",
+        "role": "assistant"
+      }
+    }
+  ],
+  "created": 1782230516,
+  "id": "20260624000143b5a9decd28f74e66",
+  "model": "glm-4.6v",
+  "object": "chat.completion",
+  "request_id": "20260624000143b5a9decd28f74e66",
+  "usage": {
+    "completion_tokens": 616,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    },
+    "prompt_tokens": 1015,
+    "prompt_tokens_details": {
+      "cached_tokens": 12
+    },
+    "total_tokens": 1631
+  }
+}

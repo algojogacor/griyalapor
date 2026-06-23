@@ -17,7 +17,7 @@ import { useLastRecorder } from '@/lib/family'
 import { formatRupiah, formatLongDate, todayISO, parseRupiahInput } from '@/lib/format'
 import { getCategoryColor, getCategoryInitial } from '@/lib/category-colors'
 import { toast } from 'sonner'
-import { Plus, Trash2, Search, ReceiptText, Pencil, User, SlidersHorizontal } from 'lucide-react'
+import { Plus, Trash2, Search, ReceiptText, Pencil, User, UserCircle, SlidersHorizontal, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface Category { id: number; name: string; group_name: string | null; default_fee: number }
@@ -33,6 +33,15 @@ export function TransactionsSection() {
   const categories: Category[] = catData?.categories ?? []
   const submittingRef = useRef(false)
   const { lastRecorder, setLastRecorder } = useLastRecorder()
+
+  // Fetch summary untuk mini-stat hari ini di atas
+  const { data: sumData } = useQuery({
+    queryKey: ['summary'],
+    queryFn: () => fetch('/api/summary').then((r) => r.json()),
+  })
+  const todayCount = sumData?.today?.count ?? 0
+  const todayAdmin = sumData?.today?.admin ?? 0
+  const todayOmzet = sumData?.today?.omzet ?? 0
 
   const [date, setDate] = useState(todayISO())
   const [categoryId, setCategoryId] = useState<string>('')
@@ -112,6 +121,22 @@ export function TransactionsSection() {
         <Button onClick={() => setOpen((v) => !v)} className="h-12 px-5 font-semibold">
           <Plus className="w-5 h-5" /> {open ? 'Tutup' : 'Catat'}
         </Button>
+      </div>
+
+      {/* Mini ringkasan hari ini — context cepat tanpa harus ke Dashboard */}
+      <div className="grid grid-cols-3 gap-2">
+        <Card className="p-3">
+          <p className="text-[11px] text-muted-foreground leading-tight">Hari Ini</p>
+          <div className="text-base sm:text-lg font-bold tabular-nums mt-0.5">{todayCount}<span className="text-xs font-normal text-muted-foreground ml-1">trx</span></div>
+        </Card>
+        <Card className="p-3">
+          <p className="text-[11px] text-muted-foreground leading-tight">Bersih</p>
+          <div className="text-base sm:text-lg font-bold tabular-nums mt-0.5 text-success">{formatRupiah(todayAdmin)}</div>
+        </Card>
+        <Card className="p-3">
+          <p className="text-[11px] text-muted-foreground leading-tight">Omzet</p>
+          <div className="text-base sm:text-lg font-bold tabular-nums mt-0.5 text-primary">{formatRupiah(todayOmzet)}</div>
+        </Card>
       </div>
 
       {open && (
@@ -236,6 +261,7 @@ function TransactionList() {
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [deleteId, setDeleteId] = useState<number | null>(null)
   const [editTxn, setEditTxn] = useState<Txn | null>(null)
+  const [filterRecorder, setFilterRecorder] = useState<string>('')
   const qc = useQueryClient()
 
   const params = new URLSearchParams()
@@ -249,7 +275,7 @@ function TransactionList() {
   })
   const txns: Txn[] = data?.transactions ?? []
 
-  // Filter berdasarkan teks + rentang nominal (client-side)
+  // Filter berdasarkan teks + rentang nominal + recorder (client-side)
   const minVal = parseRupiahInput(minAmount) || 0
   const maxVal = parseRupiahInput(maxAmount) || 0
   const filtered = txns.filter((t) => {
@@ -260,10 +286,19 @@ function TransactionList() {
     // Amount filter — pakai total (pendapatan bersih) sebagai acuan
     if (minVal > 0 && t.total < minVal) return false
     if (maxVal > 0 && t.total > maxVal) return false
+    // Recorder filter
+    if (filterRecorder) {
+      if (filterRecorder === '__none__') {
+        if (t.recorded_by) return false
+      } else if (t.recorded_by !== filterRecorder) return false
+    }
     return true
   })
 
   const hasAdvancedFilter = minVal > 0 || maxVal > 0
+
+  // Build daftar recorder unik dari transaksi yang tampil
+  const recorders = Array.from(new Set(txns.map((t) => t.recorded_by).filter((x): x is string => !!x)))
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -322,7 +357,7 @@ function TransactionList() {
             Reset
           </button>
         )}
-        {(search || from || to || hasAdvancedFilter) && (
+        {(search || from || to || hasAdvancedFilter || filterRecorder) && (
           <span className="text-xs text-muted-foreground ml-auto">{filtered.length} dari {txns.length} transaksi</span>
         )}
       </div>
@@ -344,6 +379,56 @@ function TransactionList() {
             <p className="text-xs text-primary mt-2">
               Menampilkan transaksi dengan bersih {minVal > 0 ? formatRupiah(minVal) : 'Rp0'} – {maxVal > 0 ? formatRupiah(maxVal) : 'tanpa batas'}
             </p>
+          )}
+        </div>
+      )}
+
+      {/* Filter by recorder (Dicatat Oleh) — only show if there are recorders in the current data */}
+      {recorders.length > 0 && (
+        <div className="flex items-center gap-1.5 mb-3 flex-wrap">
+          <span className="text-xs text-muted-foreground flex items-center gap-1 shrink-0">
+            <UserCircle className="w-3.5 h-3.5" /> Dicatat:
+          </span>
+          <button
+            onClick={() => setFilterRecorder('')}
+            className={cn(
+              'text-xs px-2.5 py-1 rounded-full border transition-colors',
+              filterRecorder === '' ? 'bg-primary text-primary-foreground border-primary' : 'bg-card hover:bg-secondary text-muted-foreground border-border/50',
+            )}
+          >
+            Semua
+          </button>
+          {recorders.map((r) => (
+            <button
+              key={r}
+              onClick={() => setFilterRecorder(filterRecorder === r ? '' : r)}
+              className={cn(
+                'text-xs px-2.5 py-1 rounded-full border transition-colors',
+                filterRecorder === r ? 'bg-primary text-primary-foreground border-primary' : 'bg-card hover:bg-secondary text-muted-foreground border-border/50',
+              )}
+            >
+              {r}
+            </button>
+          ))}
+          {txns.some((t) => !t.recorded_by) && (
+            <button
+              onClick={() => setFilterRecorder(filterRecorder === '__none__' ? '' : '__none__')}
+              className={cn(
+                'text-xs px-2.5 py-1 rounded-full border transition-colors',
+                filterRecorder === '__none__' ? 'bg-primary text-primary-foreground border-primary' : 'bg-card hover:bg-secondary text-muted-foreground border-border/50',
+              )}
+            >
+              Tidak ada
+            </button>
+          )}
+          {filterRecorder && (
+            <button
+              onClick={() => setFilterRecorder('')}
+              className="text-xs px-1.5 py-1 rounded-full text-muted-foreground hover:text-destructive transition-colors flex items-center gap-0.5"
+              aria-label="Reset filter recorder"
+            >
+              <X className="w-3 h-3" />
+            </button>
           )}
         </div>
       )}
@@ -382,21 +467,28 @@ function TransactionList() {
                     <div className="space-y-1.5">
                       {g.items.map((t) => {
                         return (
-                          <div key={t.id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-secondary/60 hover:shadow-sm transition-all group border border-transparent hover:border-border/50">
+                          <div key={t.id} className="flex items-center gap-2 sm:gap-3 p-3 rounded-xl hover:bg-secondary/60 hover:shadow-sm transition-all group border border-transparent hover:border-border/50">
                             <div className={cn('w-11 h-11 rounded-xl flex flex-col items-center justify-center shrink-0 font-bold shadow-sm', getCategoryColor(t.category_group).bg, getCategoryColor(t.category_group).text)}>
                               <span className="text-[10px] leading-none opacity-70">{t.qty}x</span>
                               <span className="text-xs leading-tight">{getCategoryInitial(t.category_name)}</span>
                             </div>
                             <div className="min-w-0 flex-1">
-                              <div className="font-medium truncate flex items-center gap-1.5">
-                                {t.category_name}
-                                {t.customer_name && (
-                                  <span className="inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-primary/10 text-primary shrink-0">
-                                    <User className="w-2.5 h-2.5" />{t.customer_name}
-                                  </span>
-                                )}
-                              </div>
-                              <div className="text-xs text-muted-foreground flex items-center gap-1.5 flex-wrap">
+                              <div className="font-medium leading-tight">{t.category_name}</div>
+                              {(t.customer_name || t.recorded_by) && (
+                                <div className="flex items-center gap-1 flex-wrap mt-0.5">
+                                  {t.customer_name && (
+                                    <span className="inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-primary/10 text-primary max-w-[140px]">
+                                      <User className="w-2.5 h-2.5 shrink-0" /><span className="truncate">{t.customer_name}</span>
+                                    </span>
+                                  )}
+                                  {t.recorded_by && (
+                                    <span className="inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-secondary text-secondary-foreground max-w-[140px]" title={`Dicatat oleh ${t.recorded_by}`}>
+                                      <UserCircle className="w-2.5 h-2.5 shrink-0" /><span className="truncate">{t.recorded_by}</span>
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                              <div className="text-xs text-muted-foreground flex items-center gap-1.5 flex-wrap mt-0.5">
                                 <span className="tabular-nums">{t.qty} × {formatRupiah(t.fee_per_unit)}</span>
                                 {t.note && <span className="opacity-60">· {t.note}</span>}
                               </div>
@@ -404,18 +496,18 @@ function TransactionList() {
                                 <div className="text-[11px] text-muted-foreground/80 mt-0.5 tabular-nums">Omzet {formatRupiah(t.total_paid)}</div>
                               )}
                             </div>
-                            <div className="font-bold text-success tabular-nums shrink-0 text-lg">+{formatRupiah(t.total)}</div>
-                            <div className="flex items-center gap-0.5 shrink-0">
+                            <div className="font-bold text-success tabular-nums shrink-0 text-base sm:text-lg text-right">+{formatRupiah(t.total)}</div>
+                            <div className="flex items-center gap-0.5 shrink-0 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                               <button
                                 onClick={() => setEditTxn(t)}
-                                className="opacity-0 group-hover:opacity-100 transition-opacity p-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg"
+                                className="p-1.5 sm:p-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg"
                                 aria-label="Edit transaksi"
                               >
                                 <Pencil className="w-4 h-4" />
                               </button>
                               <button
                                 onClick={() => setDeleteId(t.id)}
-                                className="opacity-0 group-hover:opacity-100 transition-opacity p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg"
+                                className="p-1.5 sm:p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg"
                                 aria-label="Hapus transaksi"
                               >
                                 <Trash2 className="w-4 h-4" />

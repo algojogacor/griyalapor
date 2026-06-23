@@ -53,7 +53,17 @@ export function AppShell() {
       nav.push({ id: 'expenses', label: 'Pengeluaran', icon: TrendingDown })
     }
   }
-  // Mobile bottom nav: batasi 6 slot, prioritaskan yang utama
+  // Mobile bottom nav: batasi 6 slot, prioritaskan yang utama.
+  // Label pendek untuk mobile biar muat di 6 kolom (375px).
+  const mobileNavLabels: Record<SectionId, string> = {
+    dashboard: 'Beranda',
+    transactions: 'Transaksi',
+    categories: 'Kategori',
+    reports: 'Laporan',
+    settings: 'Atur',
+    expenses: 'Biaya',
+    import: 'Impor',
+  }
   const mobileNav = expensesEnabled
     ? [NAV_BASE[0], NAV_BASE[1], { id: 'expenses' as SectionId, label: 'Pengeluaran', icon: TrendingDown }, NAV_BASE[2], NAV_BASE[3], NAV_BASE[4]]
     : NAV_BASE
@@ -131,18 +141,20 @@ export function AppShell() {
           {mobileNav.map((item) => {
             const Icon = item.icon
             const active = activeSection === item.id
+            const mobileLabel = mobileNavLabels[item.id] ?? item.label
             return (
               <button
                 key={item.id}
                 onClick={() => setSection(item.id)}
                 className={cn(
-                  'flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors',
+                  'flex flex-col items-center gap-0.5 py-1.5 text-[11px] font-medium transition-colors min-h-[52px] justify-center px-0.5',
                   active ? 'text-primary' : 'text-muted-foreground',
                 )}
                 aria-current={active ? 'page' : undefined}
+                aria-label={item.label}
               >
-                <Icon className={cn('w-6 h-6', active && 'scale-110')} strokeWidth={active ? 2.4 : 2} />
-                {item.label}
+                <Icon className={cn('w-5 h-5', active && 'scale-110')} strokeWidth={active ? 2.4 : 2} />
+                <span className="leading-tight">{mobileLabel}</span>
               </button>
             )
           })}

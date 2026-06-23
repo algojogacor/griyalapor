@@ -1,0 +1,591 @@
+     1→'use client'
+     2→
+     3→import { useState, useRef, useEffect } from 'react'
+     4→import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+     5→import { Card } from '@/components/ui/card'
+     6→import { Button } from '@/components/ui/button'
+     7→import { Input } from '@/components/ui/input'
+     8→import { Label } from '@/components/ui/label'
+     9→import { Textarea } from '@/components/ui/textarea'
+    10→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+    11→import { Skeleton } from '@/components/ui/skeleton'
+    12→import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+    13→import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
+    14→import { RupiahInput } from '@/components/app/RupiahInput'
+    15→import { RecorderPicker } from '@/components/app/RecorderPicker'
+    16→import { useLastRecorder } from '@/lib/family'
+    17→import { formatRupiah, formatLongDate, todayISO, parseRupiahInput } from '@/lib/format'
+    18→import { getCategoryColor, getCategoryInitial } from '@/lib/category-colors'
+    19→import { toast } from 'sonner'
+    20→import { Plus, Trash2, Search, ReceiptText, Pencil, User, SlidersHorizontal } from 'lucide-react'
+    21→import { cn } from '@/lib/utils'
+    22→
+    23→interface Category { id: number; name: string; group_name: string | null; default_fee: number }
+    24→interface Txn {
+    25→  id: number; date: string; qty: number; fee_per_unit: number; total: number; total_paid: number; customer_name: string | null; recorded_by: string | null; note: string | null
+    26→  category_name: string; category_group: string | null
+    27→}
+    28→
+    29→export function TransactionsSection() {
+    30→  const [open, setOpen] = useState(false)
+    31→  const qc = useQueryClient()
+    32→  const { data: catData } = useQuery({ queryKey: ['categories'], queryFn: () => fetch('/api/categories').then((r) => r.json()) })
+    33→  const categories: Category[] = catData?.categories ?? []
+    34→  const submittingRef = useRef(false)
+    35→  const { lastRecorder, setLastRecorder } = useLastRecorder()
+    36→
+    37→  const [date, setDate] = useState(todayISO())
+    38→  const [categoryId, setCategoryId] = useState<string>('')
+    39→  const [qty, setQty] = useState('')
+    40→  const [fee, setFee] = useState('')
+    41→  const [totalPaid, setTotalPaid] = useState('')
+    42→  const [customerName, setCustomerName] = useState('')
+    43→  const [recordedBy, setRecordedBy] = useState('')
+    44→  const [note, setNote] = useState('')
+    45→
+    46→  // Default recordedBy ke last-used recorder (persist per-device)
+    47→  useEffect(() => {
+    48→    if (lastRecorder && !recordedBy) {
+    49→      // eslint-disable-next-line react-hooks/set-state-in-effect
+    50→      setRecordedBy(lastRecorder)
+    51→    }
+    52→  }, [lastRecorder])
+    53→
+    54→  function selectCategory(id: string) {
+    55→    setCategoryId(id)
+    56→    const cat = categories.find((c) => c.id === Number(id))
+    57→    if (cat) setFee(String(cat.default_fee))
+    58→  }
+    59→
+    60→  const q = parseRupiahInput(qty) || 0
+    61→  const f = parseRupiahInput(fee) || 0
+    62→  const tp = parseRupiahInput(totalPaid) || 0
+    63→  const pendapatanBersih = q * f   // fee admin yang didapat
+    64→  // omzet = total_paid langsung (uang dari pembeli), bukan dihitung per-pelanggan
+    65→
+    66→  const addMutation = useMutation({
+    67→    mutationFn: async (payload: Record<string, unknown>) => {
+    68→      const res = await fetch('/api/transactions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+    69→      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error ?? 'Gagal') }
+    70→      return res.json()
+    71→    },
+    72→    onSuccess: () => {
+    73→      toast.success('Transaksi berhasil dicatat')
+    74→      qc.invalidateQueries({ queryKey: ['transactions'] })
+    75→      qc.invalidateQueries({ queryKey: ['summary'] })
+    76→      qc.invalidateQueries({ queryKey: ['customers'] })
+    77→      // Simpan recorder sebagai last-used (persist per-device)
+    78→      if (recordedBy) setLastRecorder(recordedBy)
+    79→      setDate(todayISO()); setCategoryId(''); setQty(''); setFee(''); setTotalPaid(''); setCustomerName(''); setNote('')
+    80→      setOpen(false)
+    81→    },
+    82→    onError: (e: Error) => toast.error(e.message),
+    83→  })
+    84→
+    85→  function submit() {
+    86→    if (submittingRef.current) return // anti double-submit
+    87→    if (!categoryId) return toast.error('Pilih kategori dulu')
+    88→    const qVal = parseRupiahInput(qty)
+    89→    if (qVal <= 0) return toast.error('Jumlah harus lebih dari 0')
+    90→    submittingRef.current = true
+    91→    addMutation.mutate({
+    92→      category_id: Number(categoryId),
+    93→      date,
+    94→      qty: qVal,
+    95→      fee_per_unit: parseRupiahInput(fee),
+    96→      total_paid: parseRupiahInput(totalPaid),
+    97→      customer_name: customerName.trim() || null,
+    98→      recorded_by: recordedBy || null,
+    99→      note: note.trim() || null,
+   100→    }, {
+   101→      onSettled: () => { submittingRef.current = false },
+   102→    })
+   103→  }
+   104→
+   105→  return (
+   106→    <div className="space-y-5">
+   107→      <div className="flex items-center justify-between gap-3">
+   108→        <div>
+   109→          <h1 className="text-2xl md:text-3xl font-bold">Transaksi</h1>
+   110→          <p className="text-sm text-muted-foreground mt-0.5">Catat dan lihat semua transaksi harian</p>
+   111→        </div>
+   112→        <Button onClick={() => setOpen((v) => !v)} className="h-12 px-5 font-semibold">
+   113→          <Plus className="w-5 h-5" /> {open ? 'Tutup' : 'Catat'}
+   114→        </Button>
+   115→      </div>
+   116→
+   117→      {open && (
+   118→        <Card className="p-5 border-primary/30">
+   119→          <h2 className="font-bold text-lg mb-4">Catat Transaksi Baru</h2>
+   120→          <div className="space-y-4">
+   121→            <div className="grid grid-cols-2 gap-3">
+   122→              <div className="space-y-1.5">
+   123→                <Label htmlFor="date" className="text-sm font-medium">Tanggal</Label>
+   124→                <Input id="date" type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-12" />
+   125→              </div>
+   126→              <div className="space-y-1.5">
+   127→                <Label className="text-sm font-medium">Kategori</Label>
+   128→                <Select value={categoryId} onValueChange={selectCategory}>
+   129→                  <SelectTrigger className="h-12"><SelectValue placeholder="Pilih kategori" /></SelectTrigger>
+   130→                  <SelectContent className="max-h-72">
+   131→                    {Object.entries(groupCategories(categories)).map(([group, cats]) => (
+   132→                      <div key={group}>
+   133→                        <div className="px-2 py-1 text-xs font-semibold text-muted-foreground uppercase">{group}</div>
+   134→                        {cats.map((c) => (
+   135→                          <SelectItem key={c.id} value={String(c.id)} className="py-2.5">
+   136→                            <span className="flex items-center justify-between w-full">
+   137→                              <span>{c.name}</span>
+   138→                              <span className="text-xs text-muted-foreground ml-2">{formatRupiah(c.default_fee)}</span>
+   139→                            </span>
+   140→                          </SelectItem>
+   141→                        ))}
+   142→                      </div>
+   143→                    ))}
+   144→                  </SelectContent>
+   145→                </Select>
+   146→              </div>
+   147→            </div>
+   148→
+   149→            <div className="grid grid-cols-2 gap-3">
+   150→              <div className="space-y-1.5">
+   151→                <Label htmlFor="qty" className="text-sm font-medium">Jumlah (qty)</Label>
+   152→                <Input
+   153→                  id="qty" inputMode="numeric" value={qty}
+   154→                  onChange={(e) => setQty(formatNum(e.target.value))}
+   155→                  placeholder="contoh: 49" className="h-14 text-2xl font-bold text-center tabular-nums"
+   156→                />
+   157→                <p className="text-xs text-muted-foreground">Jumlah IDPEL/pelanggan</p>
+   158→              </div>
+   159→              <div className="space-y-1.5">
+   160→                <Label htmlFor="fee" className="text-sm font-medium">Fee per Pelanggan (Rp)</Label>
+   161→                <RupiahInput
+   162→                  id="fee" value={fee} onChange={setFee}
+   163→                  placeholder="3.000" className="h-14 text-2xl font-bold text-center tabular-nums"
+   164→                />
+   165→                <p className="text-xs text-muted-foreground">Biaya admin. Otomatis dari kategori</p>
+   166→              </div>
+   167→            </div>
+   168→
+   169→            <div className="space-y-1.5">
+   170→              <Label htmlFor="totalpaid" className="text-sm font-medium">Total Dibayar Pembeli / Omzet (opsional)</Label>
+   171→              <RupiahInput
+   172→                id="totalpaid" value={totalPaid} onChange={setTotalPaid}
+   173→                placeholder="14.000.000" className="h-12 text-lg font-semibold text-center tabular-nums"
+   174→              />
+   175→              <p className="text-xs text-muted-foreground">Total seluruh uang dari pembeli (sudah termasuk fee). Tiap pelanggan beda nominal, jadi dijumlahkan. Boleh dikosongkan</p>
+   176→            </div>
+   177→
+   178→            <div className="space-y-1.5">
+   179→              <Label htmlFor="customer" className="text-sm font-medium flex items-center gap-1.5">
+   180→                <User className="w-3.5 h-3.5" /> Nama Pelanggan (opsional)
+   181→              </Label>
+   182→              <Input
+   183→                id="customer" value={customerName} onChange={(e) => setCustomerName(e.target.value)}
+   184→                placeholder="contoh: Pak Budi" className="h-12" maxLength={100}
+   185→              />
+   186→              <p className="text-xs text-muted-foreground">Catat nama pelanggan untuk tracking siapa saja yang bayar. Boleh dikosongkan</p>
+   187→            </div>
+   188→
+   189→            <RecorderPicker value={recordedBy} onChange={setRecordedBy} />
+   190→
+   191→            <div className="rounded-xl bg-primary/10 p-4 space-y-1.5">
+   192→              <div className="flex items-center justify-between">
+   193→                <span className="font-medium">Pendapatan Bersih (fee admin)</span>
+   194→                <span className="text-2xl font-bold tabular-nums text-primary">{formatRupiah(pendapatanBersih)}</span>
+   195→              </div>
+   196→              {tp > 0 && (
+   197→                <div className="flex items-center justify-between text-sm text-muted-foreground pt-1 border-t border-primary/20">
+   198→                  <span>Omzet (uang dari pembeli)</span>
+   199→                  <span className="font-semibold tabular-nums">{formatRupiah(tp)}</span>
+   200→                </div>
+   201→              )}
+   202→              {customerName.trim() && (
+   203→                <div className="flex items-center justify-between text-sm text-muted-foreground pt-1 border-t border-primary/20">
+   204→                  <span>Pelanggan</span>
+   205→                  <span className="font-semibold truncate ml-2 max-w-[60%] text-right">{customerName.trim()}</span>
+   206→                </div>
+   207→              )}
+   208→            </div>
+   209→
+   210→            <div className="space-y-1.5">
+   211→              <Label htmlFor="note" className="text-sm font-medium">Catatan (opsional)</Label>
+   212→              <Textarea id="note" value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Contoh: shift sore" />
+   213→            </div>
+   214→
+   215→            <div className="flex gap-2">
+   216→              <Button onClick={submit} disabled={addMutation.isPending} className="h-12 flex-1 font-semibold text-base">
+   217→                {addMutation.isPending ? 'Menyimpan...' : 'Simpan Transaksi'}
+   218→              </Button>
+   219→              <Button variant="outline" onClick={() => setOpen(false)} className="h-12 px-5">Batal</Button>
+   220→            </div>
+   221→          </div>
+   222→        </Card>
+   223→      )}
+   224→
+   225→      <TransactionList />
+   226→    </div>
+   227→  )
+   228→}
+   229→
+   230→function TransactionList() {
+   231→  const [search, setSearch] = useState('')
+   232→  const [from, setFrom] = useState('')
+   233→  const [to, setTo] = useState('')
+   234→  const [minAmount, setMinAmount] = useState('')
+   235→  const [maxAmount, setMaxAmount] = useState('')
+   236→  const [showAdvanced, setShowAdvanced] = useState(false)
+   237→  const [deleteId, setDeleteId] = useState<number | null>(null)
+   238→  const [editTxn, setEditTxn] = useState<Txn | null>(null)
+   239→  const qc = useQueryClient()
+   240→
+   241→  const params = new URLSearchParams()
+   242→  if (from) params.set('from', from)
+   243→  if (to) params.set('to', to)
+   244→  if (search) params.set('q', search)
+   245→
+   246→  const { data, isLoading } = useQuery({
+   247→    queryKey: ['transactions', from, to],
+   248→    queryFn: () => fetch('/api/transactions?' + params.toString()).then((r) => r.json()),
+   249→  })
+   250→  const txns: Txn[] = data?.transactions ?? []
+   251→
+   252→  // Filter berdasarkan teks + rentang nominal (client-side)
+   253→  const minVal = parseRupiahInput(minAmount) || 0
+   254→  const maxVal = parseRupiahInput(maxAmount) || 0
+   255→  const filtered = txns.filter((t) => {
+   256→    if (search) {
+   257→      const hay = (t.category_name + ' ' + (t.customer_name ?? '') + ' ' + (t.note ?? '')).toLowerCase()
+   258→      if (!hay.includes(search.toLowerCase())) return false
+   259→    }
+   260→    // Amount filter — pakai total (pendapatan bersih) sebagai acuan
+   261→    if (minVal > 0 && t.total < minVal) return false
+   262→    if (maxVal > 0 && t.total > maxVal) return false
+   263→    return true
+   264→  })
+   265→
+   266→  const hasAdvancedFilter = minVal > 0 || maxVal > 0
+   267→
+   268→  const deleteMutation = useMutation({
+   269→    mutationFn: async (id: number) => {
+   270→      const res = await fetch(`/api/transactions/${id}`, { method: 'DELETE' })
+   271→      if (!res.ok) throw new Error('Gagal hapus')
+   272→      return id
+   273→    },
+   274→    onSuccess: () => {
+   275→      toast.success('Transaksi dihapus')
+   276→      qc.invalidateQueries({ queryKey: ['transactions'] })
+   277→      qc.invalidateQueries({ queryKey: ['summary'] })
+   278→      setDeleteId(null)
+   279→    },
+   280→    onError: () => toast.error('Gagal menghapus transaksi'),
+   281→  })
+   282→
+   283→  const grandAdmin = filtered.reduce((s, t) => s + t.total, 0)
+   284→  const grandOmzet = filtered.reduce((s, t) => s + t.total_paid, 0)
+   285→  const hasOmzet = filtered.some((t) => t.total_paid > 0)
+   286→
+   287→  return (
+   288→    <Card className="p-5">
+   289→      <div className="flex flex-col sm:flex-row gap-2 sm:items-center justify-between mb-4">
+   290→        <h2 className="font-bold text-lg">Riwayat Transaksi</h2>
+   291→        <div className="flex flex-wrap gap-2">
+   292→          <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="h-10 w-auto" />
+   293→          <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="h-10 w-auto" />
+   294→        </div>
+   295→      </div>
+   296→
+   297→      <div className="relative mb-3">
+   298→        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+   299→        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari kategori, pelanggan, atau catatan..." className="pl-9 h-11" />
+   300→      </div>
+   301→
+   302→      {/* Advanced filter toggle */}
+   303→      <div className="flex items-center gap-2 mb-3 flex-wrap">
+   304→        <button
+   305→          onClick={() => setShowAdvanced((v) => !v)}
+   306→          className={cn(
+   307→            'text-xs px-2.5 py-1.5 rounded-lg border transition-colors flex items-center gap-1.5',
+   308→            showAdvanced || hasAdvancedFilter
+   309→              ? 'bg-primary/10 border-primary/30 text-primary'
+   310→              : 'bg-card hover:bg-secondary text-muted-foreground',
+   311→          )}
+   312→        >
+   313→          <SlidersHorizontal className="w-3.5 h-3.5" />
+   314→          Filter Nominal
+   315→          {hasAdvancedFilter && <span className="w-1.5 h-1.5 rounded-full bg-primary" />}
+   316→        </button>
+   317→        {hasAdvancedFilter && (
+   318→          <button
+   319→            onClick={() => { setMinAmount(''); setMaxAmount('') }}
+   320→            className="text-xs px-2.5 py-1.5 rounded-lg text-muted-foreground hover:text-destructive transition-colors"
+   321→          >
+   322→            Reset
+   323→          </button>
+   324→        )}
+   325→        {(search || from || to || hasAdvancedFilter) && (
+   326→          <span className="text-xs text-muted-foreground ml-auto">{filtered.length} dari {txns.length} transaksi</span>
+   327→        )}
+   328→      </div>
+   329→
+   330→      {/* Advanced amount range filter */}
+   331→      {showAdvanced && (
+   332→        <div className="rounded-xl border bg-secondary/30 p-3 mb-3">
+   333→          <p className="text-xs font-medium text-muted-foreground mb-2">Rentang Pendapatan Bersih (fee admin)</p>
+   334→          <div className="flex items-center gap-2">
+   335→            <div className="flex-1">
+   336→              <RupiahInput value={minAmount} onChange={setMinAmount} placeholder="Min: 0" className="h-10 text-sm tabular-nums" />
+   337→            </div>
+   338→            <span className="text-muted-foreground text-sm shrink-0">—</span>
+   339→            <div className="flex-1">
+   340→              <RupiahInput value={maxAmount} onChange={setMaxAmount} placeholder="Max: ∞" className="h-10 text-sm tabular-nums" />
+   341→            </div>
+   342→          </div>
+   343→          {(minVal > 0 || maxVal > 0) && (
+   344→            <p className="text-xs text-primary mt-2">
+   345→              Menampilkan transaksi dengan bersih {minVal > 0 ? formatRupiah(minVal) : 'Rp0'} – {maxVal > 0 ? formatRupiah(maxVal) : 'tanpa batas'}
+   346→            </p>
+   347→          )}
+   348→        </div>
+   349→      )}
+   350→
+   351→      {isLoading ? (
+   352→        <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}</div>
+   353→      ) : filtered.length === 0 ? (
+   354→        <div className="py-12 text-center text-muted-foreground">
+   355→          <ReceiptText className="w-10 h-10 mx-auto mb-2 opacity-40" />
+   356→          <p>Belum ada transaksi pada rentang ini.</p>
+   357→        </div>
+   358→      ) : (
+   359→        <>
+   360→          <div className="space-y-3 max-h-[28rem] overflow-y-auto scroll-thin pr-1">
+   361→            {(() => {
+   362→              // Group by date (transaksi sudah sorted date DESC dari API)
+   363→              const groups: { date: string; items: Txn[] }[] = []
+   364→              for (const t of filtered) {
+   365→                const last = groups[groups.length - 1]
+   366→                if (last && last.date === t.date) last.items.push(t)
+   367→                else groups.push({ date: t.date, items: [t] })
+   368→              }
+   369→              const todayStr = todayISO()
+   370→              return groups.map((g) => {
+   371→                const dayTotal = g.items.reduce((s, t) => s + t.total, 0)
+   372→                const isToday = g.date === todayStr
+   373→                return (
+   374→                  <div key={g.date}>
+   375→                    <div className="flex items-center justify-between px-1 mb-1.5 sticky top-0 bg-card/95 backdrop-blur py-1 z-10">
+   376→                      <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+   377→                        {isToday && <span className="w-1.5 h-1.5 rounded-full bg-primary" />}
+   378→                        {formatLongDate(g.date)}
+   379→                      </span>
+   380→                      <span className="text-xs font-semibold tabular-nums text-muted-foreground">{formatRupiah(dayTotal)}</span>
+   381→                    </div>
+   382→                    <div className="space-y-1.5">
+   383→                      {g.items.map((t) => {
+   384→                        return (
+   385→                          <div key={t.id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-secondary/60 hover:shadow-sm transition-all group border border-transparent hover:border-border/50">
+   386→                            <div className={cn('w-11 h-11 rounded-xl flex flex-col items-center justify-center shrink-0 font-bold shadow-sm', getCategoryColor(t.category_group).bg, getCategoryColor(t.category_group).text)}>
+   387→                              <span className="text-[10px] leading-none opacity-70">{t.qty}x</span>
+   388→                              <span className="text-xs leading-tight">{getCategoryInitial(t.category_name)}</span>
+   389→                            </div>
+   390→                            <div className="min-w-0 flex-1">
+   391→                              <div className="font-medium truncate flex items-center gap-1.5">
+   392→                                {t.category_name}
+   393→                                {t.customer_name && (
+   394→                                  <span className="inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-primary/10 text-primary shrink-0">
+   395→                                    <User className="w-2.5 h-2.5" />{t.customer_name}
+   396→                                  </span>
+   397→                                )}
+   398→                              </div>
+   399→                              <div className="text-xs text-muted-foreground flex items-center gap-1.5 flex-wrap">
+   400→                                <span className="tabular-nums">{t.qty} × {formatRupiah(t.fee_per_unit)}</span>
+   401→                                {t.note && <span className="opacity-60">· {t.note}</span>}
+   402→                              </div>
+   403→                              {t.total_paid > 0 && (
+   404→                                <div className="text-[11px] text-muted-foreground/80 mt-0.5 tabular-nums">Omzet {formatRupiah(t.total_paid)}</div>
+   405→                              )}
+   406→                            </div>
+   407→                            <div className="font-bold text-success tabular-nums shrink-0 text-lg">+{formatRupiah(t.total)}</div>
+   408→                            <div className="flex items-center gap-0.5 shrink-0">
+   409→                              <button
+   410→                                onClick={() => setEditTxn(t)}
+   411→                                className="opacity-0 group-hover:opacity-100 transition-opacity p-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg"
+   412→                                aria-label="Edit transaksi"
+   413→                              >
+   414→                                <Pencil className="w-4 h-4" />
+   415→                              </button>
+   416→                              <button
+   417→                                onClick={() => setDeleteId(t.id)}
+   418→                                className="opacity-0 group-hover:opacity-100 transition-opacity p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg"
+   419→                                aria-label="Hapus transaksi"
+   420→                              >
+   421→                                <Trash2 className="w-4 h-4" />
+   422→                              </button>
+   423→                            </div>
+   424→                          </div>
+   425→                        )
+   426→                      })}
+   427→                    </div>
+   428→                  </div>
+   429→                )
+   430→              })
+   431→            })()}
+   432→          </div>
+   433→          <div className="mt-3 pt-3 border-t space-y-1">
+   434→            <div className="flex items-center justify-between font-semibold">
+   435→              <span>Total Pendapatan Bersih ({filtered.length} transaksi)</span>
+   436→              <span className="tabular-nums text-primary text-lg">{formatRupiah(grandAdmin)}</span>
+   437→            </div>
+   438→            {hasOmzet && (
+   439→              <div className="flex items-center justify-between text-sm text-muted-foreground">
+   440→                <span>Total Omzet (uang pembeli)</span>
+   441→                <span className="tabular-nums font-medium">{formatRupiah(grandOmzet)}</span>
+   442→              </div>
+   443→            )}
+   444→          </div>
+   445→        </>
+   446→      )}
+   447→
+   448→      <AlertDialog open={deleteId !== null} onOpenChange={(v) => !v && setDeleteId(null)}>
+   449→        <AlertDialogContent>
+   450→          <AlertDialogHeader>
+   451→            <AlertDialogTitle>Hapus transaksi ini?</AlertDialogTitle>
+   452→            <AlertDialogDescription>Transaksi yang dihapus tidak bisa dikembalikan.</AlertDialogDescription>
+   453→          </AlertDialogHeader>
+   454→          <AlertDialogFooter>
+   455→            <AlertDialogCancel className="h-11" disabled={deleteMutation.isPending}>Batal</AlertDialogCancel>
+   456→            <AlertDialogAction
+   457→              onClick={() => deleteId && deleteMutation.mutate(deleteId)}
+   458→              disabled={deleteMutation.isPending}
+   459→              className="h-11 bg-destructive hover:bg-destructive/90"
+   460→            >
+   461→              {deleteMutation.isPending ? 'Menghapus...' : 'Hapus'}
+   462→            </AlertDialogAction>
+   463→          </AlertDialogFooter>
+   464→        </AlertDialogContent>
+   465→      </AlertDialog>
+   466→
+   467→      {editTxn && (
+   468→        <EditTransactionDialog
+   469→          txn={editTxn}
+   470→          onClose={() => setEditTxn(null)}
+   471→          onSaved={() => {
+   472→            qc.invalidateQueries({ queryKey: ['transactions'] })
+   473→            qc.invalidateQueries({ queryKey: ['summary'] })
+   474→            setEditTxn(null)
+   475→          }}
+   476→        />
+   477→      )}
+   478→    </Card>
+   479→  )
+   480→}
+   481→
+   482→function EditTransactionDialog({ txn, onClose, onSaved }: { txn: Txn; onClose: () => void; onSaved: () => void }) {
+   483→  const [date, setDate] = useState(txn.date)
+   484→  const [qty, setQty] = useState(String(txn.qty))
+   485→  const [fee, setFee] = useState(String(txn.fee_per_unit))
+   486→  const [totalPaid, setTotalPaid] = useState(String(txn.total_paid))
+   487→  const [customerName, setCustomerName] = useState(txn.customer_name ?? '')
+   488→  const [recordedBy, setRecordedBy] = useState(txn.recorded_by ?? '')
+   489→  const [note, setNote] = useState(txn.note ?? '')
+   490→
+   491→  const q = parseRupiahInput(qty) || 0
+   492→  const f = parseRupiahInput(fee) || 0
+   493→  const tp = parseRupiahInput(totalPaid) || 0
+   494→  const bersih = q * f
+   495→
+   496→  const mutation = useMutation({
+   497→    mutationFn: async () => {
+   498→      const res = await fetch(`/api/transactions/${txn.id}`, {
+   499→        method: 'PATCH',
+   500→        headers: { 'Content-Type': 'application/json' },
+   501→        body: JSON.stringify({
+   502→          date,
+   503→          qty: q,
+   504→          fee_per_unit: f,
+   505→          total_paid: tp,
+   506→          customer_name: customerName.trim() || null,
+   507→          recorded_by: recordedBy || null,
+   508→          note: note.trim() || null,
+   509→        }),
+   510→      })
+   511→      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error ?? 'Gagal') }
+   512→      return res.json()
+   513→    },
+   514→    onSuccess: () => {
+   515→      toast.success('Transaksi diperbarui')
+   516→      onSaved()
+   517→    },
+   518→    onError: (e: Error) => toast.error(e.message),
+   519→  })
+   520→
+   521→  return (
+   522→    <Dialog open onOpenChange={(v) => !v && onClose()}>
+   523→      <DialogContent className="max-w-md" aria-describedby={undefined}>
+   524→        <DialogHeader>
+   525→          <DialogTitle>Edit Transaksi · {txn.category_name}</DialogTitle>
+   526→        </DialogHeader>
+   527→        <div className="space-y-4 py-2">
+   528→          <div className="space-y-1.5">
+   529→            <Label className="font-medium">Tanggal</Label>
+   530→            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-12" />
+   531→          </div>
+   532→          <div className="grid grid-cols-2 gap-3">
+   533→            <div className="space-y-1.5">
+   534→              <Label className="font-medium">Jumlah (qty)</Label>
+   535→              <Input inputMode="numeric" value={qty} onChange={(e) => setQty(e.target.value.replace(/[^\d]/g, ''))} className="h-14 text-2xl font-bold text-center tabular-nums" />
+   536→            </div>
+   537→            <div className="space-y-1.5">
+   538→              <Label className="font-medium">Fee/Pelanggan</Label>
+   539→              <RupiahInput value={fee} onChange={setFee} className="h-14 text-2xl font-bold text-center tabular-nums" />
+   540→            </div>
+   541→          </div>
+   542→          <div className="space-y-1.5">
+   543→            <Label className="font-medium">Total Dibayar Pembeli / Omzet (opsional)</Label>
+   544→            <RupiahInput value={totalPaid} onChange={setTotalPaid} className="h-12 text-lg font-semibold text-center tabular-nums" />
+   545→          </div>
+   546→          <div className="space-y-1.5">
+   547→            <Label className="font-medium flex items-center gap-1.5"><User className="w-3.5 h-3.5" /> Nama Pelanggan (opsional)</Label>
+   548→            <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="contoh: Pak Budi" className="h-12" maxLength={100} />
+   549→          </div>
+   550→          <RecorderPicker value={recordedBy} onChange={setRecordedBy} compact />
+   551→          <div className="rounded-xl bg-primary/10 p-3 space-y-1">
+   552→            <div className="flex items-center justify-between text-sm">
+   553→              <span>Pendapatan Bersih</span>
+   554→              <span className="font-bold tabular-nums text-primary">{formatRupiah(bersih)}</span>
+   555→            </div>
+   556→            {tp > 0 && (
+   557→              <div className="flex items-center justify-between text-xs text-muted-foreground">
+   558→                <span>Omzet</span>
+   559→                <span className="font-semibold tabular-nums">{formatRupiah(tp)}</span>
+   560→              </div>
+   561→            )}
+   562→          </div>
+   563→          <div className="space-y-1.5">
+   564→            <Label className="font-medium">Catatan</Label>
+   565→            <Textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} />
+   566→          </div>
+   567→        </div>
+   568→        <DialogFooter>
+   569→          <Button variant="outline" onClick={onClose} className="h-11">Batal</Button>
+   570→          <Button onClick={() => mutation.mutate()} disabled={mutation.isPending || q <= 0} className="h-11 font-semibold">
+   571→            {mutation.isPending ? 'Menyimpan...' : 'Simpan Perubahan'}
+   572→          </Button>
+   573→        </DialogFooter>
+   574→      </DialogContent>
+   575→    </Dialog>
+   576→  )
+   577→}
+   578→
+   579→function groupCategories(cats: Category[]): Record<string, Category[]> {
+   580→  const out: Record<string, Category[]> = {}
+   581→  for (const c of cats) {
+   582→    const g = c.group_name ?? 'Lainnya'
+   583→    ;(out[g] ??= []).push(c)
+   584→  }
+   585→  return out
+   586→}
+   587→
+   588→function formatNum(s: string): string {
+   589→  return s.replace(/[^\d]/g, '')
+   590→}
+   591→

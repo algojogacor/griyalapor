@@ -1,0 +1,28 @@
+{
+  "choices": [
+    {
+      "finish_reason": "stop",
+      "index": 0,
+      "message": {
+        "content": "### 1. Text Labels and Headings (Exact Wording)  \n- **Transaksi** (large, bold heading)  \n- **Catat dan lihat semua transaksi harian** (subheading, smaller font)  \n- **Riwayat Transaksi** (section heading, bold)  \n- **mm/dd/yyyy** (placeholder text in two date input fields)  \n- **Cari kategori, pelanggan, atau ...** (placeholder text in search bar, truncated with \"...\")  \n\n\n### 2. Transaction Rows  \n*No transaction rows are visible in the provided vertical slice.*  \n\n\n### 3. Filter Chips/Pills Row  \n*No filter chips/pills row is visible in the provided vertical slice.*  \n\n\n### 4. Truncated Text  \n- **Cari kategori, pelanggan, atau ...** (search bar placeholder text ends with \"...\", indicating truncation).  \n\n\n### 5. Horizontal Overflow  \n*No horizontal overflow off the right edge is visible in the provided vertical slice.*",
+        "role": "assistant"
+      }
+    }
+  ],
+  "created": 1782230523,
+  "id": "20260624000156ca1de4f59e0b4e59",
+  "model": "glm-4.6v",
+  "object": "chat.completion",
+  "request_id": "20260624000156ca1de4f59e0b4e59",
+  "usage": {
+    "completion_tokens": 212,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    },
+    "prompt_tokens": 1015,
+    "prompt_tokens_details": {
+      "cached_tokens": 7
+    },
+    "total_tokens": 1227
+  }
+}

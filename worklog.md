@@ -438,3 +438,114 @@ Stage Summary:
 - Backup replace mode bisa tambah double-confirm (ketik "HAPUS") untuk ekstra aman
 - Bisa tambah: filter transaksi by recorded_by (siapa yang catat), dashboard "kontribusi per anggota", export per pelanggan
 - iOS install card hanya tampil di iOS Safari asli (keluarga semua Android, jadi PWA install via Chrome/Android works via InstallPrompt)
+
+---
+Task ID: 14
+Agent: main (orchestrator) — cron review round (recorded_by gaps + responsive + new features)
+Task: Tutup gap recorded_by di riwayat/impor/laporan PDF, fix responsive mobile offside, tambah fitur baru (filter by recorder, kontribusi pencatat, mini-summary)
+
+Work Log:
+
+- [GAP FIX] recorded_by di Riwayat Transaksi (TransactionsSection.tsx):
+  - Transaction row sekarang menampilkan DUA pill badge di bawah nama kategori:
+    - Badge biru (bg-primary/10) dengan icon User + nama pelanggan
+    - Badge abu-abu (bg-secondary) dengan icon UserCircle + nama recorder (Dicatat Oleh)
+  - Layout direstrukturisasi: nama kategori di line 1 (tanpa truncate, bisa wrap), badges di line 2, qty×fee di line 3, omzet di line 4
+  - Edit/delete buttons: opacity-100 di mobile (selalu visible), opacity-0 group-hover di desktop
+  - Padding button diperkecil di mobile (p-1.5) untuk hemat ruang
+
+- [GAP FIX] recorded_by di ImportSection.tsx (CSV impor):
+  - Tambah 'recorded_by' ke Field type union
+  - Tambah ke FIELD_LABELS ('Dicatat Oleh'), FIELD_REQUIRED (false), FIELD_HINTS
+  - Deteksi header otomatis: regex /dicatat|recorded|diisi.*oleh|oleh.*siapa|petugas|operator/
+  - Sample CSV sekarang punya kolom "Dicatat Oleh" + contoh data (Yangti, Mama)
+  - Preview table tambah kolom "Dicatat" (hidden lg:table-cell)
+  - Payload impor kirim recorded_by ke API (sudah didukung API sebelumnya)
+  - Sinonim didokumentasikan: "Dicatat Oleh → Recorded/Diisi Oleh/Petugas"
+
+- [GAP FIX] recorded_by di Reports print HTML (ReportsSection.tsx):
+  - Tabel print HTML tambah kolom "Dicatat Oleh" setelah "Pelanggan"
+  - Txn interface tambah recorded_by: string | null
+  - txRows map tambah <td>${esc(t.recorded_by ?? '')}</td>
+  - Total row colspan diperbaiki: colspan=5 (Tanggal...Fee/Unit) + totalAdmin + 3 empty cells
+  - colspan perbaikan bug lama (sebelumnya 6/7, seharusnya 5 untuk align dengan kolom)
+
+- [NEW FEATURE] Filter transaksi by Dicatat Oleh (TransactionsSection.tsx):
+  - Chip row "Dicatat:" dengan tombol: Semua, [list recorder unik], Tidak ada (untuk transaksi tanpa recorder)
+  - Filter client-side berdasarkan t.recorded_by
+  - Counter "X dari Y transaksi" update saat filter recorder aktif
+  - Tombol reset (X) untuk clear filter recorder
+  - Hanya muncul jika ada transaksi dengan recorded_by di data
+
+- [NEW FEATURE] Filter Dicatat Oleh di Reports (ReportsSection.tsx):
+  - Chip row "Dicatat Oleh:" dengan tombol: Semua, [list recorder + count], Tidak dicatat
+  - Filter diterapkan ke txns (combined dengan customer filter)
+  - Import UserCircle dari lucide-react
+
+- [NEW FEATURE] Kontribusi Pencatat Bulan Ini (DashboardSection.tsx):
+  - Kartu baru "Kontribusi Pencatat Bulan Ini" dengan icon UserCircle
+  - Ranking anggota keluarga by jumlah transaksi yang dicatat (bukan by admin)
+  - Progress bar relative ke count tertinggi
+  - Top 1 dapat badge bintang ★ + warna amber
+  - Hanya muncul jika ada data recorded_by di bulan ini
+  - API /api/summary tambah topRecorders aggregate (GROUP BY recorded_by, ORDER BY count DESC LIMIT 10)
+
+- [NEW FEATURE] Mini-summary bar di Transactions (TransactionsSection.tsx):
+  - 3 kartu kecil di atas: "Hari Ini" (count trx), "Bersih" (admin, green), "Omzet" (primary)
+  - Fetch summary via useQuery(['summary']) — auto-refresh saat ada perubahan
+  - Memberi context cepat tanpa harus navigasi ke Dashboard
+
+- [RESPONSIVE FIX] Bottom nav mobile (AppShell.tsx):
+  - Label pendek untuk mobile: Beranda, Transaksi, Biaya (Pengeluaran), Kategori, Laporan, Atur (Pengaturan)
+  - "Biaya" dipilih (bukan "Keluar") untuk avoid konflik dengan "exit/logout"
+  - Font text-[11px], min-h-[52px], py-1.5 — fit 6 kolom di 375px tanpa truncation
+  - aria-label tetap pakai label panjang untuk accessibility
+
+- [RESPONSIVE FIX] Hero card Dashboard (DashboardSection.tsx):
+  - Label "Pendapatan Hari Ini (fee admin)" di-split: "Pendapatan Hari Ini" + "(fee admin)" hidden di xs
+  - Angka utama: break-all untuk handle nominal besar
+  - Tombol "Catat Transaksi" flex-1 di mobile, sm:flex-initial di desktop
+  - Tombol "Batal Terakhir" text hidden di xs, icon only
+
+- [RESPONSIVE FIX] Reports stat cards (ReportsSection.tsx):
+  - Padding p-3 sm:p-4 (lebih compact di mobile)
+  - Label text-xs sm:text-sm
+  - Value text-lg sm:text-xl lg:text-2xl
+  - leading-tight untuk hemat vertikal space
+
+- [RESPONSIVE FIX] Transaction row layout (TransactionsSection.tsx):
+  - Category name: hapus `truncate`, pakai `leading-tight` (bisa wrap kalau perlu)
+  - Badges pindah ke line terpisah (flex flex-wrap mt-0.5)
+  - Badge max-w[140px] dengan truncate (full text untuk nama pendek)
+  - Amount text-base sm:text-lg, text-right
+  - Edit/delete p-1.5 sm:p-2
+
+- [CSS] Tambah breakpoint xs di globals.css:
+  - --breakpoint-xs: 30rem (480px) untuk small phones / large phones
+  - Enable prefix xs: di Tailwind 4
+
+VERIFIKASI agent-browser (mobile 375px):
+- Transactions page: Mini-summary 3 cards (Hari Ini 5 trx, Bersih Rp70.500 green, Omzet Rp4.300.000) ✓
+- Transaction rows: category full (PLN Pascabayar, PLN Prabayar), 2 badges per row (Bu Siti+Mama, Pak Budi+Yangti), amount right ✓
+- Recorder filter chips: Semua, Mama, Yangti, Tidak ada ✓
+- Reports page: Customer filter (Semua 5, Pak Budi2 1, Pak Budi 1, Pak Budi1 1, Bu Siti 1) + Dicatat Oleh filter (Semua, Mama 1, Yangti 3, Tidak dicatat) ✓
+- Dashboard: "Kontribusi Pencatat Bulan Ini" card muncul dengan ranking ✓
+- Bottom nav: Beranda, Transaksi, Biaya, Kategori, Laporan, Atur — full labels, no truncation ✓
+- Lint PASS, no dev log errors ✓
+
+Stage Summary:
+- 3 GAP FIX recorded_by selesai: riwayat transaksi (badge), impor CSV (field + deteksi + sample), laporan PDF (kolom Dicatat Oleh)
+- 4 NEW FEATURE: filter by recorder (Transactions + Reports), kontribusi pencatat card (Dashboard), mini-summary bar (Transactions)
+- 5 RESPONSIVE FIX: bottom nav (label pendek), hero card (label split + break-all), stat cards (compact mobile), transaction row (badges line terpisah, no truncate), breakpoint xs
+- API /api/summary tambah topRecorders aggregate
+- VLM verification PASSED: category full, badges visible, no overflow, bottom nav correct
+
+## Status Proyek
+- STABIL & lengkap. recorded_by terintegrasi end-to-end (form → DB → riwayat → laporan → impor → export CSV/PDF → AI agent → dashboard kontribusi). Responsive mobile clean di 375px. Lint PASS, QA terverifikasi.
+
+## Risiko / Saran next
+- recurring_expenses table sudah ada di DB (belum ada UI) — bisa implement auto-generate pengeluaran tetap bulanan
+- Backup replace mode bisa tambah double-confirm (ketik "HAPUS") untuk ekstra aman
+- Bisa tambah: export laporan per pelanggan, notifikasi push untuk tutup buku harian, multi-currency
+- Chart width(0) warning masih ada 2x saat mount Reports (cosmetic, recharts known issue)
+- Test data: 2 transaksi test dibuat via API (Pak Budi/Yangti, Bu Siti/Mama) — bisa dihapus manual kalau mengganggu
