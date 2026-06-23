@@ -1,10 +1,11 @@
 'use client'
 
 import { useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useAppStore, type SectionId } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import {
-  Home, ReceiptText, Tags, BarChart3, Settings, Bot, Sun, Moon,
+  Home, ReceiptText, Tags, BarChart3, Settings, Bot, Sun, Moon, TrendingDown,
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { useState } from 'react'
@@ -14,9 +15,10 @@ import { CategoriesSection } from './sections/CategoriesSection'
 import { ReportsSection } from './sections/ReportsSection'
 import { ImportSection } from './sections/ImportSection'
 import { SettingsSection } from './sections/SettingsSection'
+import { ExpensesSection } from './sections/ExpensesSection'
 import { AgentChat } from './agent/AgentChat'
 
-const NAV: { id: SectionId; label: string; icon: typeof Home }[] = [
+const NAV_BASE: { id: SectionId; label: string; icon: typeof Home }[] = [
   { id: 'dashboard', label: 'Beranda', icon: Home },
   { id: 'transactions', label: 'Transaksi', icon: ReceiptText },
   { id: 'categories', label: 'Kategori', icon: Tags },
@@ -27,6 +29,39 @@ const NAV: { id: SectionId; label: string; icon: typeof Home }[] = [
 export function AppShell() {
   const { activeSection, setSection } = useAppStore()
   const agentOpen = useAppStore((s) => s.agentOpen)
+  const setExpensesEnabled = useAppStore((s) => s.setExpensesEnabled)
+  const expensesEnabled = useAppStore((s) => s.expensesEnabled)
+
+  // Fetch settings sekali, sync expensesEnabled ke store
+  const { data: settings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: () => fetch('/api/settings').then((r) => r.json()) as Promise<{ settings: Record<string, string> }>,
+  })
+  useEffect(() => {
+    if (settings?.settings?.expenses_enabled) {
+      setExpensesEnabled(settings.settings.expenses_enabled === '1')
+    }
+  }, [settings, setExpensesEnabled])
+
+  // Bangun nav list: jika expenses aktif, sisipkan setelah Transaksi
+  const nav: { id: SectionId; label: string; icon: typeof Home }[] = []
+  for (const item of NAV_BASE) {
+    nav.push(item)
+    if (item.id === 'transactions' && expensesEnabled) {
+      nav.push({ id: 'expenses', label: 'Pengeluaran', icon: TrendingDown })
+    }
+  }
+  // Mobile bottom nav: batasi 6 slot, prioritaskan yang utama
+  const mobileNav = expensesEnabled
+    ? [NAV_BASE[0], NAV_BASE[1], { id: 'expenses' as SectionId, label: 'Pengeluaran', icon: TrendingDown }, NAV_BASE[2], NAV_BASE[3], NAV_BASE[4]]
+    : NAV_BASE
+
+  // Jika activeSection = expenses tapi expensesEnabled mati, fallback ke transactions
+  useEffect(() => {
+    if (activeSection === 'expenses' && !expensesEnabled) {
+      setSection('transactions')
+    }
+  }, [activeSection, expensesEnabled, setSection])
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -52,7 +87,7 @@ export function AppShell() {
         {/* Sidebar desktop */}
         <aside className="hidden md:flex w-60 shrink-0 border-r bg-card/40 sticky top-16 self-start h-[calc(100vh-4rem)] flex-col p-3 no-print">
           <nav className="flex flex-col gap-1">
-            {NAV.map((item) => (
+            {nav.map((item) => (
               <NavItem key={item.id} item={item} active={activeSection === item.id} onClick={() => setSection(item.id)} />
             ))}
             <div className="my-2 border-t" />
@@ -78,14 +113,15 @@ export function AppShell() {
             {activeSection === 'reports' && <ReportsSection />}
             {activeSection === 'import' && <ImportSection />}
             {activeSection === 'settings' && <SettingsSection />}
+            {activeSection === 'expenses' && expensesEnabled && <ExpensesSection />}
           </div>
         </main>
       </div>
 
       {/* Bottom nav mobile */}
       <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 border-t bg-card/95 backdrop-blur no-print">
-        <div className="grid grid-cols-5">
-          {NAV.map((item) => {
+        <div className={cn('grid', mobileNav.length === 6 ? 'grid-cols-6' : 'grid-cols-5')}>
+          {mobileNav.map((item) => {
             const Icon = item.icon
             const active = activeSection === item.id
             return (
@@ -93,7 +129,7 @@ export function AppShell() {
                 key={item.id}
                 onClick={() => setSection(item.id)}
                 className={cn(
-                  'flex flex-col items-center gap-0.5 py-2.5 text-[11px] font-medium transition-colors',
+                  'flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors',
                   active ? 'text-primary' : 'text-muted-foreground',
                 )}
                 aria-current={active ? 'page' : undefined}

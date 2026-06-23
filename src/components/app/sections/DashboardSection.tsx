@@ -1,14 +1,21 @@
 'use client'
 
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { formatRupiah, formatLongDate, todayISO } from '@/lib/format'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAppStore } from '@/lib/store'
 import { toast } from 'sonner'
-import { ArrowUpRight, Undo2, Plus, TrendingUp, Wallet, CalendarDays, Sparkles } from 'lucide-react'
+import { ArrowUpRight, Undo2, Plus, TrendingUp, Wallet, CalendarDays, Sparkles, Zap } from 'lucide-react'
+import { getCategoryColor, getCategoryInitial } from '@/lib/category-colors'
 import { cn } from '@/lib/utils'
+
+interface Category { id: number; name: string; group_name: string | null; default_fee: number }
 
 interface Summary {
   ranges: { today: string; week: { from: string; to: string }; month: { from: string; to: string } }
@@ -60,6 +67,37 @@ export function DashboardSection() {
   })
 
   const today = todayISO()
+
+  // Fetch categories untuk quick-add
+  const { data: catData } = useQuery({ queryKey: ['categories'], queryFn: () => fetch('/api/categories').then((r) => r.json()) })
+  const categories: Category[] = catData?.categories ?? []
+  const [quickCat, setQuickCat] = useState<Category | null>(null)
+
+  // Ambil kategori paling sering dipakai bulan ini (dari breakdown), fallback ke beberapa default
+  const topCategories: Category[] = (() => {
+    if (!data?.breakdown?.length || categories.length === 0) {
+      // Fallback: ambil beberapa kategori populer
+      const popularNames = ['PLN Prabayar', 'PLN Pascabayar', 'PDAM', 'BPJS Kesehatan', 'Pulsa']
+      return popularNames.map((n) => categories.find((c) => c.name === n)).filter((c): c is Category => !!c).slice(0, 6)
+    }
+    const result: Category[] = []
+    for (const b of data.breakdown) {
+      const cat = categories.find((c) => c.id === b.category_id)
+      if (cat) result.push(cat)
+      if (result.length >= 6) break
+    }
+    // Jika kurang dari 4, tambahkan dari daftar populer yang belum ada
+    if (result.length < 4) {
+      const existingIds = new Set(result.map((c) => c.id))
+      for (const cat of categories) {
+        if (!existingIds.has(cat.id) && cat.default_fee > 0) {
+          result.push(cat)
+          if (result.length >= 6) break
+        }
+      }
+    }
+    return result
+  })()
 
   return (
     <div className="space-y-5">
@@ -127,6 +165,38 @@ export function DashboardSection() {
         </div>
       )}
 
+      {/* Akses Cepat — tombol kategori untuk catat sekali klik */}
+      {topCategories.length > 0 && (
+        <Card className="p-4 md:p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <Zap className="w-5 h-5 text-primary" />
+            <h2 className="font-bold text-lg">Akses Cepat</h2>
+            <span className="text-xs text-muted-foreground">— pilih kategori, isi jumlah, selesai</span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+            {topCategories.map((cat) => {
+              const color = getCategoryColor(cat.group_name)
+              return (
+                <button
+                  key={cat.id}
+                  onClick={() => setQuickCat(cat)}
+                  className="group flex items-center gap-2.5 p-3 rounded-xl border bg-card hover:border-primary/40 hover:shadow-sm transition-all text-left active:scale-[0.98]"
+                >
+                  <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center font-bold text-xs shrink-0', color.bg, color.text)}>
+                    {getCategoryInitial(cat.name)}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="font-semibold text-sm leading-tight line-clamp-1">{cat.name}</div>
+                    <div className="text-xs text-muted-foreground">fee {formatRupiah(cat.default_fee)}</div>
+                  </div>
+                  <Plus className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
+                </button>
+              )
+            })}
+          </div>
+        </Card>
+      )}
+
       {/* Quick links */}
       <div className="grid grid-cols-2 gap-3">
         <QuickLink
@@ -156,15 +226,29 @@ export function DashboardSection() {
             <div className="space-y-2">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
           ) : data?.breakdown.length ? (
             <div className="space-y-2 max-h-72 overflow-y-auto scroll-thin pr-1">
-              {data.breakdown.slice(0, 8).map((b) => (
-                <div key={b.category_id} className="flex items-center justify-between py-2 border-b last:border-0">
-                  <div className="min-w-0">
-                    <div className="font-medium truncate">{b.name}</div>
-                    <div className="text-xs text-muted-foreground">{b.group ?? 'Lainnya'} · {b.count} transaksi</div>
+              {data.breakdown.slice(0, 8).map((b) => {
+                const color = getCategoryColor(b.group)
+                const maxAdmin = data.breakdown[0]?.admin || 1
+                return (
+                  <div key={b.category_id} className="py-2 border-b last:border-0">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className={cn('w-8 h-8 rounded-lg flex items-center justify-center shrink-0 font-bold text-[11px]', color.bg, color.text)}>
+                          {getCategoryInitial(b.name)}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-medium truncate">{b.name}</div>
+                          <div className="text-xs text-muted-foreground">{b.group ?? 'Lainnya'} · {b.count} transaksi</div>
+                        </div>
+                      </div>
+                      <div className="font-semibold tabular-nums shrink-0">{formatRupiah(b.admin)}</div>
+                    </div>
+                    <div className="mt-1.5 ml-[42px] h-1 rounded-full bg-secondary overflow-hidden">
+                      <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${Math.max(4, (b.admin / maxAdmin) * 100)}%` }} />
+                    </div>
                   </div>
-                  <div className="font-semibold tabular-nums shrink-0 ml-3">{formatRupiah(b.admin)}</div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           ) : (
             <p className="text-muted-foreground text-sm py-6 text-center">Belum ada transaksi bulan ini.</p>
@@ -182,17 +266,23 @@ export function DashboardSection() {
             <div className="space-y-2">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
           ) : data?.recentTransactions.length ? (
             <div className="space-y-1.5 max-h-72 overflow-y-auto scroll-thin pr-1">
-              {data.recentTransactions.map((t) => (
-                <div key={t.id} className="flex items-center justify-between py-2 border-b last:border-0">
-                  <div className="min-w-0">
-                    <div className="font-medium truncate">{t.category_name}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {t.date} · {t.qty} × {formatRupiah(t.fee_per_unit)}
+              {data.recentTransactions.map((t) => {
+                const color = getCategoryColor(t.category_group)
+                return (
+                  <div key={t.id} className="flex items-center gap-2.5 py-2 border-b last:border-0">
+                    <div className={cn('w-8 h-8 rounded-lg flex items-center justify-center shrink-0 font-bold text-[11px]', color.bg, color.text)}>
+                      {getCategoryInitial(t.category_name)}
                     </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium truncate">{t.category_name}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {t.date} · {t.qty} × {formatRupiah(t.fee_per_unit)}
+                      </div>
+                    </div>
+                    <div className="font-semibold text-success tabular-nums shrink-0">+{formatRupiah(t.total)}</div>
                   </div>
-                  <div className="font-semibold text-success tabular-nums shrink-0 ml-3">+{formatRupiah(t.total)}</div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           ) : (
             <p className="text-muted-foreground text-sm py-6 text-center">Belum ada transaksi.</p>
@@ -207,7 +297,101 @@ export function DashboardSection() {
           Mau catat lebih cepat? Ketik saja <span className="font-medium text-foreground">"tadi 49 idpel PLN admin 3000"</span> di Asisten AI.
         </p>
       </Card>
+
+      {quickCat && (
+        <QuickAddDialog
+          category={quickCat}
+          onClose={() => setQuickCat(null)}
+          onSaved={() => {
+            qc.invalidateQueries({ queryKey: ['summary'] })
+            qc.invalidateQueries({ queryKey: ['transactions'] })
+            setQuickCat(null)
+          }}
+        />
+      )}
     </div>
+  )
+}
+
+function QuickAddDialog({ category, onClose, onSaved }: { category: Category; onClose: () => void; onSaved: () => void }) {
+  const [date, setDate] = useState(todayISO())
+  const [qty, setQty] = useState('')
+  const [fee, setFee] = useState(String(category.default_fee))
+  const [bill, setBill] = useState('')
+
+  const q = Number(qty.replace(/[^\d]/g, '')) || 0
+  const f = Number(fee.replace(/[^\d]/g, '')) || 0
+  const b = Number(bill.replace(/[^\d]/g, '')) || 0
+  const bersih = q * f
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch('/api/transactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          category_id: category.id,
+          date,
+          qty: q,
+          fee_per_unit: f,
+          bill_per_unit: b,
+          note: null,
+        }),
+      })
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error ?? 'Gagal') }
+      return res.json()
+    },
+    onSuccess: () => {
+      toast.success(`${category.name} dicatat`)
+      onSaved()
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Zap className="w-5 h-5 text-primary" /> Catat Cepat · {category.name}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 py-1">
+          <div className="space-y-1.5">
+            <Label className="font-medium">Tanggal</Label>
+            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-12" />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="font-medium">Jumlah Pelanggan / IDPEL</Label>
+            <Input
+              autoFocus inputMode="numeric" value={qty}
+              onChange={(e) => setQty(e.target.value.replace(/[^\d]/g, ''))}
+              placeholder="contoh: 49" className="h-16 text-3xl font-bold text-center tabular-nums"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label className="font-medium text-xs">Fee/Pelanggan</Label>
+              <Input inputMode="numeric" value={fee} onChange={(e) => setFee(e.target.value.replace(/[^\d]/g, ''))} className="h-12 text-lg font-bold text-center tabular-nums" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="font-medium text-xs">Tagihan/Pelanggan (opsional)</Label>
+              <Input inputMode="numeric" value={bill} onChange={(e) => setBill(e.target.value.replace(/[^\d]/g, ''))} placeholder="0" className="h-12 text-lg font-semibold text-center tabular-nums" />
+            </div>
+          </div>
+          <div className="rounded-xl bg-primary/10 p-3 flex items-center justify-between">
+            <span className="font-medium text-sm">Pendapatan Bersih</span>
+            <span className="text-xl font-bold tabular-nums text-primary">{formatRupiah(bersih)}</span>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} className="h-12">Batal</Button>
+          <Button onClick={() => mutation.mutate()} disabled={mutation.isPending || q <= 0} className="h-12 font-semibold flex-1">
+            {mutation.isPending ? 'Menyimpan...' : `Simpan ${formatRupiah(bersih)}`}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

@@ -14,6 +14,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { formatRupiah, parseRupiahInput } from '@/lib/format'
 import { toast } from 'sonner'
 import { Plus, Pencil, Trash2, ChevronDown, Tags, FolderTree } from 'lucide-react'
+import { getCategoryColor } from '@/lib/category-colors'
 import { cn } from '@/lib/utils'
 
 interface Category { id: number; name: string; group_name: string | null; default_fee: number }
@@ -166,12 +167,13 @@ export function CategoriesSection() {
 
 function CategoryGroup({ groupName, cats, onEdit, onDelete }: { groupName: string; cats: Category[]; onEdit: (c: Category) => void; onDelete: (id: number) => void }) {
   const [open, setOpen] = useState(true)
+  const color = getCategoryColor(groupName)
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
       <Card className="overflow-hidden">
         <CollapsibleTrigger className="w-full flex items-center justify-between p-4 hover:bg-secondary/50 transition-colors">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+            <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center', color.bg, color.text)}>
               <FolderTree className="w-5 h-5" />
             </div>
             <div className="text-left">

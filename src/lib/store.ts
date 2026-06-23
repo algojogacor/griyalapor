@@ -2,7 +2,7 @@
 
 import { create } from 'zustand'
 
-export type SectionId = 'dashboard' | 'transactions' | 'categories' | 'reports' | 'import' | 'settings'
+export type SectionId = 'dashboard' | 'transactions' | 'categories' | 'reports' | 'import' | 'settings' | 'expenses'
 
 interface AppState {
   activeSection: SectionId

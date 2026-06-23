@@ -153,3 +153,42 @@ Stage Summary:
 - Data transaksi lama (sebelum perubahan) punya bill_per_unit=0 → omzetnya = bersih. Itu expected (belum pernah dicatat nominalnya).
 - Bisa tambah fitur "edit transaksi" (saat ini hanya hapus) agar kakek bisa koreksi nominal tagihan di transaksi lama.
 - Bisa tambah toggle "tampilkan omzet" di settings kalau kakek mau mode simple (tanpa omzet).
+
+---
+Task ID: 8
+Agent: main (orchestrator) — cron review
+Task: QA pass + fitur baru (expenses UI, edit transaksi, quick-add) + styling polish (category colors)
+
+Work Log:
+- QA awal via agent-browser: dashboard, transaksi, kategori, laporan, impor, settings semua berfungsi. Ditemukan GAP: toggle "Catat pengeluaran operasional" ON di Settings, tapi TIDAK ADA UI untuk menambah pengeluaran. Expense cards tampil di dashboard tapi 0 karena tidak bisa diinput.
+- [BUG/GAP FIXED] Buat ExpensesSection.tsx baru: form catat pengeluaran (tanggal, jumlah besar, keterangan + quick-label chips: Listrik tempat, Bensin ke bank, Internet, dll) + list dengan filter tanggal, hapus dengan konfirmasi. Warna destructive (merah) untuk diferensiasi dari pendapatan.
+- Update store.ts: tambah 'expenses' ke SectionId.
+- Update AppShell.tsx: fetch settings sync expensesEnabled ke store; nav "Pengeluaran" muncul kondisional (sidebar desktop + bottom nav mobile 6-slot saat aktif); render ExpensesSection. Fallback ke transactions kalau expenses dimatikan saat sedang di section expenses.
+- [FEATURE] Edit transaksi: API PATCH /api/transactions/[id] (qty, fee, bill, date, note + recompute total). UI: tombol edit (ikon Pencil) di setiap baris TransactionList → EditTransactionDialog dengan field editable + preview Bersih/Omzet real-time. Invalidation query setelah save.
+- [FEATURE] Quick-add shortcuts di Dashboard: section "Akses Cepat" menampilkan 6 kategori teratas (berdasarkan breakdown bulan ini, fallback ke kategori populer PLN/PDAM/BPJS/Pulsa). Klik → QuickAddDialog minimal (tanggal, qty besar, fee auto dari kategori, bill opsional, preview Bersih). Tombol simpan menampilkan nominal. 1-klik catat transaksi tanpa buka form penuh.
+- [STYLING] Sistem warna kategori (src/lib/category-colors.ts): 10 grup PPOB dapat warna khas (Listrik=amber, Air=sky, Asuransi=emerald, Telko=violet, Pulsa=fuchsia, Multifinance=orange, Gas=blue, TV=rose, E-Money=cyan, Lainnya=slate) + helper getCategoryInitial (2 huruf). Diterapkan di: avatar transaksi (qty + inisial), breakdown dashboard (avatar + progress bar), recent transactions, quick-add buttons, group icon kategori.
+- [STYLING] Dashboard breakdown: tambah progress bar relatif per kategori (width = admin/maxAdmin). Baris jadi lebih informatif & visual.
+- [STYLING] Quick-add buttons: avatar berwarna per grup + label + fee default, hover shadow.
+
+VERIFIKASI agent-browser:
+- Dashboard: Akses Cepat tampil dengan 6 kategori berwarna (PP=PLN Pascabayar, PD=PDAM, BK=BPJS Kesehatan, dll) ✓
+- Quick-add PDAM: klik → dialog "Catat Cepat · PDAM", isi qty=5, fee auto 2500, preview "Pendapatan Bersih Rp12.500", Simpan → toast "PDAM dicatat" ✓
+- Expenses section: nav "Pengeluaran" tampil (toggle on). Klik Catat → form, isi 20000 + chip "Bensin ke bank", Simpan → muncul di list "-Rp20.000" ✓
+- Dashboard setelah expense: Pendapatan Rp117.500 (3 transaksi), Pengeluaran Hari Ini -Rp20.000 ✓
+- Edit transaksi: klik edit PDAM → dialog "Edit Transaksi · PDAM", ubah qty 5→8, preview Rp20.000, Simpan → toast "Transaksi diperbarui", list update "8 × Rp2.500 = +Rp20.000" ✓
+- Laporan: Pendapatan Bersih Rp125.000, Pendapatan Kotor Rp2.125.000, Laba Operasional Rp105.000 (125k−20k), breakdown table PLN Rp105.000 + PDAM Rp20.000 ✓
+- bun run lint PASS ✓
+
+Stage Summary:
+- 3 fitur baru: Expenses management UI (menutup gap fungsional), Edit transaksi (koreksi tanpa hapus-ulang), Quick-add shortcuts (catat 1 klik).
+- Styling polish: sistem warna kategori 10 grup + progress bar breakdown + avatar inisial — pengenalan visual jauh lebih cepat.
+- Semua fitur terverifikasi end-to-end via agent-browser.
+
+## Status Proyek
+- STABIL & lebih lengkap. Gap fungsional expenses tertutup. UX lebih cepat (quick-add + edit). Visual lebih kaya (warna kategori).
+
+## Risiko / Saran next
+- Mobile bottom-nav jadi 6 slot saat expenses on — masih muat tapi agak rapat di layar kecil. Pertimbangkan sembunyikan "Kategori" di mobile saat expenses on, atau pakai "More" menu.
+- Quick-add saat ini tidak ada input nominal tagihan di tampilan awal (ada tapi opsional). Bisa default tampilkan bill field jika kategori biasanya punya tagihan (PLN, PDAM).
+- Bisa tambah: recurring expenses (pengeluaran tetap bulanan), filter kategori di laporan, export per kategori, PWA install prompt UI, data backup/restore.
+- Transaksi lama (sebelum kolom bill) punya bill=0 → omzet=bersih. Expected.
