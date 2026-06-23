@@ -1,8 +1,5 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+// Prisma schema for GriyaLapor — PWA Pencatatan Keuangan PPOB
+// Database: Turso (libSQL), provider sqlite
 
 generator client {
   provider = "prisma-client-js"
@@ -13,20 +10,58 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+/// Kategori layanan PPOB (PLN, PDAM, BPJS, dll)
+model Category {
+  id          Int           @id @default(autoincrement())
+  name        String
+  /// contoh: "Listrik", "Air", "Asuransi", "Telko"
+  groupName   String?
+  /// fee/admin default dalam rupiah
+  defaultFee  Int           @default(0)
+  createdAt   DateTime      @default(now())
+  transactions Transaction[]
+
+  @@map("categories")
 }
 
-model Post {
-  id        String   @id @default(cuid())
-  title     String
-  content   String?
-  published Boolean  @default(false)
-  authorId  String
+/// Transaksi harian (kolektif per kategori per hari)
+model Transaction {
+  id         Int      @id @default(autoincrement())
+  categoryId Int
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  /// format YYYY-MM-DD
+  date       String
+  /// jumlah pelanggan/IDPEL/transaksi
+  qty        Int
+  /// fee yang diambil per transaksi (rupiah)
+  feePerUnit Int
+  /// qty * feePerUnit
+  total      Int
+  note       String?
+  createdAt  DateTime @default(now())
+
+  @@index([date])
+  @@index([categoryId, date])
+  @@map("transactions")
+}
+
+/// Pengeluaran operasional (opsional, diatur dari settings)
+model Expense {
+  id        Int      @id @default(autoincrement())
+  /// format YYYY-MM-DD
+  date      String
+  label     String
+  amount    Int
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+
+  @@index([date])
+  @@map("expenses")
+}
+
+/// Pengaturan aplikasi (key-value)
+model Setting {
+  key   String @id
+  value String
+
+  @@map("settings")
 }
