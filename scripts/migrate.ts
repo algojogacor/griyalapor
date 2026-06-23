@@ -30,6 +30,16 @@ async function migrate() {
     await client.execute(stmt)
   }
   console.log(`✓ Skema diterapkan (${statements.length} statements)`)
+
+  // Migrasi tambahan: tambah kolom customer_name jika belum ada (idempotent)
+  const cols = await client.execute("PRAGMA table_info(transactions)")
+  const hasCustomer = cols.rows.some((r) => (r as { name: string }).name === 'customer_name')
+  if (!hasCustomer) {
+    await client.execute("ALTER TABLE transactions ADD COLUMN customer_name TEXT")
+    console.log('✓ Migrasi: tambah kolom customer_name ke tabel transactions')
+  } else {
+    console.log('ℹ Kolom customer_name sudah ada. Skip migrasi.')
+  }
 }
 
 const SEED_CATEGORIES: { name: string; group: string; fee: number }[] = [

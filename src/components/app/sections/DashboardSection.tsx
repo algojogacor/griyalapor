@@ -12,9 +12,10 @@ import { RupiahInput } from '@/components/app/RupiahInput'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAppStore } from '@/lib/store'
 import { toast } from 'sonner'
-import { ArrowUpRight, Undo2, Plus, TrendingUp, Wallet, CalendarDays, Sparkles, Zap } from 'lucide-react'
+import { ArrowUpRight, Undo2, Plus, TrendingUp, Wallet, CalendarDays, Sparkles, Zap, User, Users, Settings2 } from 'lucide-react'
 import { getCategoryColor, getCategoryInitial } from '@/lib/category-colors'
 import { cn } from '@/lib/utils'
+import { ManageQuickAccessDialog, type QuickAccessItem } from '@/components/app/ManageQuickAccess'
 
 interface Category { id: number; name: string; group_name: string | null; default_fee: number }
 
@@ -25,9 +26,10 @@ interface Summary {
   month: { count: number; admin: number; omzet: number }
   expenses: { today: { count: number; total: number }; week: { count: number; total: number }; month: { count: number; total: number } }
   breakdown: { category_id: number; name: string; group: string | null; count: number; admin: number; omzet: number }[]
+  topCustomers: { name: string; count: number; admin: number; omzet: number; last_date: string }[]
   recentTransactions: {
     id: number; date: string; qty: number; fee_per_unit: number; total: number; total_paid: number;
-    note: string | null; category_name: string; category_group: string | null
+    customer_name: string | null; note: string | null; category_name: string; category_group: string | null
   }[]
 }
 
@@ -73,26 +75,49 @@ export function DashboardSection() {
   const { data: catData } = useQuery({ queryKey: ['categories'], queryFn: () => fetch('/api/categories').then((r) => r.json()) })
   const categories: Category[] = catData?.categories ?? []
   const [quickCat, setQuickCat] = useState<Category | null>(null)
+  const [quickFeeOverride, setQuickFeeOverride] = useState<number | undefined>(undefined)
+  const [manageOpen, setManageOpen] = useState(false)
 
-  // Ambil kategori paling sering dipakai bulan ini (dari breakdown), fallback ke beberapa default
-  const topCategories: Category[] = (() => {
-    if (!data?.breakdown?.length || categories.length === 0) {
-      // Fallback: ambil beberapa kategori populer
-      const popularNames = ['PLN Prabayar', 'PLN Pascabayar', 'PDAM', 'BPJS Kesehatan', 'Pulsa']
-      return popularNames.map((n) => categories.find((c) => c.name === n)).filter((c): c is Category => !!c).slice(0, 6)
+  // Akses Cepat: jika user sudah kustomisasi (settings.quick_access), pakai itu.
+  // Jika belum, fallback ke top categories dari breakdown bulan ini.
+  const quickAccessSetting: QuickAccessItem[] = (() => {
+    const raw = settings?.settings?.quick_access
+    if (!raw) return []
+    try {
+      const parsed = JSON.parse(raw) as QuickAccessItem[]
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      return []
     }
-    const result: Category[] = []
+  })()
+
+  const topCategories: { cat: Category; feeOverride?: number }[] = (() => {
+    // Mode kustom: pakai daftar dari settings
+    if (quickAccessSetting.length > 0 && categories.length > 0) {
+      const result: { cat: Category; feeOverride?: number }[] = []
+      for (const item of quickAccessSetting) {
+        const cat = categories.find((c) => c.id === item.id)
+        if (cat) result.push({ cat, feeOverride: item.fee })
+        if (result.length >= 8) break
+      }
+      return result
+    }
+    // Mode otomatis: ambil kategori paling sering dipakai bulan ini
+    if (!data?.breakdown?.length || categories.length === 0) {
+      const popularNames = ['PLN Prabayar', 'PLN Pascabayar', 'PDAM', 'BPJS Kesehatan', 'Pulsa']
+      return popularNames.map((n) => categories.find((c) => c.name === n)).filter((c): c is Category => !!c).slice(0, 6).map((cat) => ({ cat }))
+    }
+    const result: { cat: Category; feeOverride?: number }[] = []
     for (const b of data.breakdown) {
       const cat = categories.find((c) => c.id === b.category_id)
-      if (cat) result.push(cat)
+      if (cat) result.push({ cat })
       if (result.length >= 6) break
     }
-    // Jika kurang dari 4, tambahkan dari daftar populer yang belum ada
     if (result.length < 4) {
-      const existingIds = new Set(result.map((c) => c.id))
+      const existingIds = new Set(result.map((r) => r.cat.id))
       for (const cat of categories) {
         if (!existingIds.has(cat.id) && cat.default_fee > 0) {
-          result.push(cat)
+          result.push({ cat })
           if (result.length >= 6) break
         }
       }
@@ -197,15 +222,26 @@ export function DashboardSection() {
           <div className="flex items-center gap-2 mb-3">
             <Zap className="w-5 h-5 text-primary" />
             <h2 className="font-bold text-lg">Akses Cepat</h2>
-            <span className="text-xs text-muted-foreground">— pilih kategori, isi jumlah, selesai</span>
+            <span className="text-xs text-muted-foreground hidden sm:inline">— pilih kategori, isi jumlah, selesai</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setManageOpen(true)}
+              className="ml-auto text-muted-foreground hover:text-primary h-8 px-2"
+              title="Kelola Akses Cepat"
+            >
+              <Settings2 className="w-4 h-4" /> <span className="hidden sm:inline text-xs">Kelola</span>
+            </Button>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-            {topCategories.map((cat) => {
+            {topCategories.map(({ cat, feeOverride }) => {
               const color = getCategoryColor(cat.group_name)
+              const effectiveFee = feeOverride ?? cat.default_fee
+              const hasOverride = feeOverride !== undefined
               return (
                 <button
                   key={cat.id}
-                  onClick={() => setQuickCat(cat)}
+                  onClick={() => { setQuickCat(cat); setQuickFeeOverride(feeOverride) }}
                   className="group flex items-center gap-2.5 p-3 rounded-xl border bg-card hover:border-primary/40 hover:shadow-md hover:-translate-y-0.5 transition-all text-left active:scale-[0.98]"
                 >
                   <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center font-bold text-xs shrink-0', color.bg, color.text)}>
@@ -213,13 +249,21 @@ export function DashboardSection() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="font-semibold text-sm leading-tight line-clamp-1">{cat.name}</div>
-                    <div className="text-xs text-muted-foreground">fee {formatRupiah(cat.default_fee)}</div>
+                    <div className="text-xs text-muted-foreground flex items-center gap-1">
+                      fee {formatRupiah(effectiveFee)}
+                      {hasOverride && <span className="text-[9px] text-amber-600 dark:text-amber-400 font-medium">kustom</span>}
+                    </div>
                   </div>
                   <Plus className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
                 </button>
               )
             })}
           </div>
+          {quickAccessSetting.length === 0 && (
+            <p className="text-xs text-muted-foreground mt-3 flex items-center gap-1.5">
+              <Settings2 className="w-3 h-3" /> Mode otomatis: kategori teratas bulan ini. Klik "Kelola" untuk atur sendiri.
+            </p>
+          )}
         </Card>
       )}
 
@@ -301,8 +345,9 @@ export function DashboardSection() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="font-medium truncate">{t.category_name}</div>
-                      <div className="text-xs text-muted-foreground">
+                      <div className="text-xs text-muted-foreground truncate">
                         {t.date} · {t.qty} × {formatRupiah(t.fee_per_unit)}
+                        {t.customer_name ? ` · ${t.customer_name}` : ''}
                       </div>
                     </div>
                     <div className="font-semibold text-success tabular-nums shrink-0">+{formatRupiah(t.total)}</div>
@@ -316,34 +361,77 @@ export function DashboardSection() {
         </Card>
       </div>
 
+      {/* Pelanggan teratas bulan ini — untuk tracking siapa saja yang bayar */}
+      {!isLoading && data && data.topCustomers && data.topCustomers.length > 0 && (
+        <Card className="p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <Users className="w-5 h-5 text-primary" />
+            <h2 className="font-bold text-lg">Pelanggan Teratas Bulan Ini</h2>
+          </div>
+          <p className="text-xs text-muted-foreground mb-3">Pelanggan yang paling banyak membayar — bantu tracking siapa saja yang aktif</p>
+          <div className="space-y-1.5 max-h-72 overflow-y-auto scroll-thin pr-1">
+            {data.topCustomers.map((c, i) => {
+              const maxAdmin = data.topCustomers[0]?.admin || 1
+              return (
+                <div key={c.name} className="py-2 border-b last:border-0">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className={cn(
+                        'w-8 h-8 rounded-full flex items-center justify-center shrink-0 font-bold text-[11px]',
+                        i === 0 ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' : 'bg-primary/10 text-primary'
+                      )}>
+                        {i === 0 ? '★' : i + 1}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-medium truncate">{c.name}</div>
+                        <div className="text-xs text-muted-foreground">{c.count} transaksi · terakhir {c.last_date}</div>
+                      </div>
+                    </div>
+                    <div className="font-semibold tabular-nums shrink-0">{formatRupiah(c.admin)}</div>
+                  </div>
+                  <div className="mt-1.5 ml-[42px] h-1 rounded-full bg-secondary overflow-hidden">
+                    <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${Math.max(4, (c.admin / maxAdmin) * 100)}%` }} />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </Card>
+      )}
+
       {/* AI hint */}
       <Card className="p-4 border-dashed bg-secondary/40 flex items-center gap-3">
         <Sparkles className="w-5 h-5 text-primary shrink-0" />
         <p className="text-sm text-muted-foreground">
-          Mau catat lebih cepat? Ketik saja <span className="font-medium text-foreground">"tadi 49 idpel PLN admin 3000"</span> di Asisten AI.
+          Mau catat lebih cepat? Ketik saja <span className="font-medium text-foreground">"tadi 49 idpel PLN admin 3000 dari Pak Budi"</span> di Asisten AI.
         </p>
       </Card>
 
       {quickCat && (
         <QuickAddDialog
           category={quickCat}
-          onClose={() => setQuickCat(null)}
+          feeOverride={quickFeeOverride}
+          onClose={() => { setQuickCat(null); setQuickFeeOverride(undefined) }}
           onSaved={() => {
             qc.invalidateQueries({ queryKey: ['summary'] })
             qc.invalidateQueries({ queryKey: ['transactions'] })
             setQuickCat(null)
+            setQuickFeeOverride(undefined)
           }}
         />
       )}
+
+      <ManageQuickAccessDialog open={manageOpen} onOpenChange={setManageOpen} />
     </div>
   )
 }
 
-function QuickAddDialog({ category, onClose, onSaved }: { category: Category; onClose: () => void; onSaved: () => void }) {
+function QuickAddDialog({ category, feeOverride, onClose, onSaved }: { category: Category; feeOverride?: number; onClose: () => void; onSaved: () => void }) {
   const [date, setDate] = useState(todayISO())
   const [qty, setQty] = useState('')
-  const [fee, setFee] = useState(String(category.default_fee))
+  const [fee, setFee] = useState(String(feeOverride ?? category.default_fee))
   const [totalPaid, setTotalPaid] = useState('')
+  const [customerName, setCustomerName] = useState('')
 
   const q = Number(qty.replace(/[^\d]/g, '')) || 0
   const f = Number(fee.replace(/[^\d]/g, '')) || 0
@@ -361,6 +449,7 @@ function QuickAddDialog({ category, onClose, onSaved }: { category: Category; on
           qty: q,
           fee_per_unit: f,
           total_paid: tp,
+          customer_name: customerName.trim() || null,
           note: null,
         }),
       })
@@ -376,7 +465,7 @@ function QuickAddDialog({ category, onClose, onSaved }: { category: Category; on
 
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md" aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Zap className="w-5 h-5 text-primary" /> Catat Cepat · {category.name}
@@ -404,6 +493,10 @@ function QuickAddDialog({ category, onClose, onSaved }: { category: Category; on
               <Label className="font-medium text-xs">Total Dibayar Pembeli (opsional)</Label>
               <RupiahInput value={totalPaid} onChange={setTotalPaid} placeholder="0" className="h-12 text-lg font-semibold text-center tabular-nums" />
             </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="font-medium text-xs flex items-center gap-1.5"><User className="w-3 h-3" /> Nama Pelanggan (opsional)</Label>
+            <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="contoh: Pak Budi" className="h-11" maxLength={100} />
           </div>
           <div className="rounded-xl bg-primary/10 p-3 space-y-1">
             <div className="flex items-center justify-between text-sm">

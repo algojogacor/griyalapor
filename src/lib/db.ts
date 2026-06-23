@@ -34,6 +34,7 @@ export interface Transaction {
   qty: number
   fee_per_unit: number
   total: number
+  customer_name: string | null
   note: string | null
   created_at: string
 }

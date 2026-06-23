@@ -218,12 +218,13 @@ function ExpenseList() {
             <AlertDialogDescription>Pengeluaran yang dihapus tidak bisa dikembalikan.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="h-11">Batal</AlertDialogCancel>
+            <AlertDialogCancel className="h-11" disabled={deleteMutation.isPending}>Batal</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => deleteId && deleteMutation.mutate(deleteId)}
+              disabled={deleteMutation.isPending}
               className="h-11 bg-destructive hover:bg-destructive/90"
             >
-              Hapus
+              {deleteMutation.isPending ? 'Menghapus...' : 'Hapus'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

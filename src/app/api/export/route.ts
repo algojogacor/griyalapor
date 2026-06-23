@@ -42,22 +42,22 @@ export async function GET(req: Request) {
 
   // transactions
   const res = await db.execute({
-    sql: `SELECT t.date, c.name as category, c.group_name as "group", t.qty, t.fee_per_unit, t.total, t.total_paid as omzet, t.note
+    sql: `SELECT t.date, c.name as category, c.group_name as "group", t.qty, t.fee_per_unit, t.total, t.total_paid as omzet, t.customer_name, t.note
           FROM transactions t JOIN categories c ON c.id = t.category_id
           WHERE ${cond} ORDER BY t.date, t.id`,
     args: [from, to],
   })
-  const rows: string[][] = [['Tanggal', 'Kategori', 'Grup', 'Jumlah', 'Fee/Unit', 'Pendapatan Bersih', 'Omzet', 'Catatan']]
+  const rows: string[][] = [['Tanggal', 'Kategori', 'Grup', 'Jumlah', 'Fee/Unit', 'Pendapatan Bersih', 'Omzet', 'Pelanggan', 'Catatan']]
   let grandAdmin = 0
   let grandOmzet = 0
   for (const r of res.rows) {
-    const x = r as { date: string; category: string; group: string | null; qty: number; fee_per_unit: number; total: number; omzet: number; note: string | null }
+    const x = r as { date: string; category: string; group: string | null; qty: number; fee_per_unit: number; total: number; omzet: number; customer_name: string | null; note: string | null }
     grandAdmin += x.total
     grandOmzet += x.omzet
-    rows.push([x.date, x.category, x.group ?? '', String(x.qty), String(x.fee_per_unit), String(x.total), String(x.omzet), x.note ?? ''])
+    rows.push([x.date, x.category, x.group ?? '', String(x.qty), String(x.fee_per_unit), String(x.total), String(x.omzet), x.customer_name ?? '', x.note ?? ''])
   }
-  rows.push(['', '', '', '', '', `TOTAL BERSIH`, String(grandAdmin), ''])
-  rows.push(['', '', '', '', '', `TOTAL OMZET`, String(grandOmzet), ''])
+  rows.push(['', '', '', '', '', `TOTAL BERSIH`, String(grandAdmin), '', ''])
+  rows.push(['', '', '', '', '', `TOTAL OMZET`, String(grandOmzet), '', ''])
 
   let csv = rows.map((r) => r.map(csvEscape).join(',')).join('\n')
 

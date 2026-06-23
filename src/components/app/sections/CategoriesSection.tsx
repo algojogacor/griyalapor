@@ -109,7 +109,7 @@ export function CategoriesSection() {
       )}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>{editing ? 'Edit Kategori' : 'Tambah Kategori Baru'}</DialogTitle>
           </DialogHeader>
@@ -151,12 +151,13 @@ export function CategoriesSection() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="h-11">Batal</AlertDialogCancel>
+            <AlertDialogCancel className="h-11" disabled={deleteMutation.isPending}>Batal</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => deleteId && deleteMutation.mutate(deleteId)}
+              disabled={deleteMutation.isPending}
               className="h-11 bg-destructive hover:bg-destructive/90"
             >
-              Hapus
+              {deleteMutation.isPending ? 'Menghapus...' : 'Hapus'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

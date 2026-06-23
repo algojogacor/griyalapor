@@ -39,7 +39,7 @@ import {
 import { cn } from '@/lib/utils'
 
 // ---------- Tipe ----------
-type Field = 'date' | 'category' | 'group' | 'qty' | 'fee' | 'total_paid' | 'note'
+type Field = 'date' | 'category' | 'group' | 'qty' | 'fee' | 'total_paid' | 'customer_name' | 'note'
 type DateFormat = 'YYYY-MM-DD' | 'DD/MM/YYYY' | 'DD-MM-YYYY'
 
 interface ImportResult {
@@ -55,6 +55,7 @@ const FIELD_LABELS: Record<Field, string> = {
   qty: 'Jumlah (qty)',
   fee: 'Fee per Unit',
   total_paid: 'Total Dibayar Pembeli (Omzet)',
+  customer_name: 'Nama Pelanggan',
   note: 'Catatan',
 }
 
@@ -65,6 +66,7 @@ const FIELD_REQUIRED: Record<Field, boolean> = {
   qty: true,
   fee: false,
   total_paid: false,
+  customer_name: false,
   note: false,
 }
 
@@ -75,6 +77,7 @@ const FIELD_HINTS: Record<Field, string> = {
   qty: 'Jumlah pelanggan/IDPEL',
   fee: 'Biaya admin per unit (Rp). Kosongkan = 0',
   total_paid: 'Total uang dari pembeli = Omzet (Rp). Opsional',
+  customer_name: 'Nama pelanggan (opsional, untuk tracking)',
   note: 'Opsional',
 }
 
@@ -84,10 +87,12 @@ const NO_MAPPING = '__none__'
 
 function detectHeaderField(header: string): Field | null {
   const h = header.toLowerCase().trim()
+  // cek customer_name SEBELUM qty karena "pelanggan" bisa muncul di header qty (idpel) maupun customer
+  if (/(^|_)pelanggan($|_)|customer|nama.*pelanggan|atas.*nama|konsumen|^nama$/.test(h)) return 'customer_name'
   if (/(^|_)tanggal($|_)|^date$|^tgl\b|tanggal/.test(h)) return 'date'
   if (/kategori|jenis|layanan|category/.test(h)) return 'category'
   if (/grup|group/.test(h)) return 'group'
-  if (/jumlah|qty|pelanggan|idpel|quantity/.test(h)) return 'qty'
+  if (/jumlah|qty|idpel|quantity/.test(h)) return 'qty'
   if (/fee|admin/.test(h)) return 'fee'
   if (/total.*dibayar|total.*bayar|omzet|total_paid|uang.*masuk/.test(h)) return 'total_paid'
   if (/catatan|note|ket/.test(h)) return 'note'
@@ -227,9 +232,9 @@ export function ImportSection() {
 
   function downloadSample() {
     const csv =
-      'Tanggal,Kategori,Grup,Jumlah,Fee,Total Dibayar,Catatan\n' +
-      '23/06/2026,PLN,Listrik,49,3000,14000000,Shift pagi\n' +
-      '23/06/2026,BPJS,Kesehatan,12,2500,,\n'
+      'Tanggal,Kategori,Grup,Jumlah,Fee,Total Dibayar,Pelanggan,Catatan\n' +
+      '23/06/2026,PLN,Listrik,49,3000,14000000,Pak Budi,Shift pagi\n' +
+      '23/06/2026,BPJS,Kesehatan,12,2500,,Bu Siti,\n'
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -253,8 +258,9 @@ export function ImportSection() {
       const qty = mapping.qty ? normalizeInt(r[mapping.qty] ?? '') : 0
       const fee = mapping.fee ? normalizeInt(r[mapping.fee] ?? '') : 0
       const totalPaid = mapping.total_paid ? normalizeInt(r[mapping.total_paid] ?? '') : 0
+      const customerName = mapping.customer_name ? (r[mapping.customer_name] ?? '').trim() : ''
       const note = mapping.note ? (r[mapping.note] ?? '').trim() : ''
-      return { date, category, group, qty, fee, totalPaid, bersih: qty * fee, omzet: totalPaid, note }
+      return { date, category, group, qty, fee, totalPaid, bersih: qty * fee, omzet: totalPaid, customerName, note }
     })
   }, [step, rawRows, mapping, dateFormat])
 
@@ -277,6 +283,7 @@ export function ImportSection() {
         qty: number
         fee_per_unit: number
         total_paid: number
+        customer_name: string | null
         note: string | null
       }[]
       createMissing: boolean
@@ -322,6 +329,7 @@ export function ImportSection() {
       const qty = mapping.qty ? normalizeInt(r[mapping.qty] ?? '') : 0
       const fee = mapping.fee ? normalizeInt(r[mapping.fee] ?? '') : 0
       const totalPaid = mapping.total_paid ? normalizeInt(r[mapping.total_paid] ?? '') : 0
+      const customerName = mapping.customer_name ? (r[mapping.customer_name] ?? '').trim() || null : null
       const note = mapping.note ? (r[mapping.note] ?? '').trim() : null
       return {
         date: normalizeDate(dateRaw, dateFormat),
@@ -330,6 +338,7 @@ export function ImportSection() {
         qty,
         fee_per_unit: fee,
         total_paid: totalPaid,
+        customer_name: customerName,
         note: note || null,
       }
     })
@@ -502,7 +511,7 @@ export function ImportSection() {
             </div>
             <p className="text-muted-foreground mt-2 text-xs">
               Sinonim yang dikenali: Tanggal → Date/Tgl, Kategori →
-              Jenis/Layanan, Jumlah → Qty/IDPEL, Fee → Admin, Total Dibayar → Omzet/Uang Masuk, Catatan → Note/Ket,
+              Jenis/Layanan, Jumlah → Qty/IDPEL, Fee → Admin, Total Dibayar → Omzet/Uang Masuk, Pelanggan → Customer/Atas Nama/Konsumen, Catatan → Note/Ket,
               Grup → Group.
             </p>
           </div>
@@ -540,7 +549,7 @@ export function ImportSection() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {(
-                ['date', 'category', 'group', 'qty', 'fee', 'total_paid', 'note'] as Field[]
+                ['date', 'category', 'group', 'qty', 'fee', 'total_paid', 'customer_name', 'note'] as Field[]
               ).map((f) => (
                 <div key={f} className="space-y-1.5">
                   <Label className="text-sm font-medium flex items-center gap-1.5">
@@ -637,6 +646,7 @@ export function ImportSection() {
                     <TableHead className="text-right">Fee</TableHead>
                     <TableHead className="text-right">Bersih</TableHead>
                     <TableHead className="text-right hidden md:table-cell">Omzet</TableHead>
+                    <TableHead className="hidden lg:table-cell">Pelanggan</TableHead>
                     <TableHead className="hidden md:table-cell">Catatan</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -670,6 +680,9 @@ export function ImportSection() {
                       <TableCell className="text-right tabular-nums hidden md:table-cell text-muted-foreground">
                         {r.totalPaid > 0 ? formatRupiah(r.omzet) : '—'}
                       </TableCell>
+                      <TableCell className="hidden lg:table-cell text-muted-foreground text-xs">
+                        {r.customerName || '—'}
+                      </TableCell>
                       <TableCell className="hidden md:table-cell text-muted-foreground text-xs">
                         {r.note || '—'}
                       </TableCell>
@@ -678,7 +691,7 @@ export function ImportSection() {
                   {previewRows.length === 0 && (
                     <TableRow>
                       <TableCell
-                        colSpan={8}
+                        colSpan={9}
                         className="text-center text-muted-foreground py-6"
                       >
                         Tidak ada baris untuk dipratinjau.

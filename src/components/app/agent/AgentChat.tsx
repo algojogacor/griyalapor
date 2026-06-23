@@ -27,8 +27,8 @@ interface ChatMessage {
 const SUGGESTIONS = [
   'Rekap hari ini dong',
   'Berapa pendapatan PLN bulan ini?',
-  'Tadi 49 idpel PLN admin 3000',
-  'Catat 10 PDAM fee 2500 tagihan 150rb',
+  'Tadi 49 idpel PLN admin 3000 dari Pak Budi',
+  'Catat 10 PDAM fee 2500 pelanggan Bu Siti',
 ]
 
 export function AgentChat({ open }: { open: boolean }) {
@@ -358,9 +358,11 @@ function ActionRow({ action }: { action: ProposalAction }) {
     const qty = Number(p.qty ?? 0)
     const fee = Number(p.fee_per_unit ?? 0)
     const totalPaid = Number(p.total_paid ?? 0)
+    const customerName = p.customer_name ? String(p.customer_name) : ''
     const bersih = qty * fee
     const omzetInfo = totalPaid > 0 ? ` · Omzet ${formatRupiah(totalPaid)}` : ''
-    label = `Catat: ${p.category_name ?? '#' + p.category_id} — ${qty} × ${formatRupiah(fee)} = Pendapatan Bersih ${formatRupiah(bersih)}${omzetInfo} (${p.date})`
+    const custInfo = customerName ? ` · Pelanggan "${customerName}"` : ''
+    label = `Catat: ${p.category_name ?? '#' + p.category_id} — ${qty} × ${formatRupiah(fee)} = Pendapatan Bersih ${formatRupiah(bersih)}${omzetInfo}${custInfo} (${p.date})`
   } else {
     label = `Ubah fee: ${p.category_name ?? '#' + p.category_id} → ${formatRupiah(Number(p.new_fee ?? 0))}`
   }

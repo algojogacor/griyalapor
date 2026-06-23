@@ -28,7 +28,7 @@ export async function GET(req: Request) {
   }
   const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : ''
 
-  let sql = `SELECT t.id, t.category_id, t.date, t.qty, t.fee_per_unit, t.total, t.total_paid, t.note, t.created_at,
+  let sql = `SELECT t.id, t.category_id, t.date, t.qty, t.fee_per_unit, t.total, t.total_paid, t.customer_name, t.note, t.created_at,
                     c.name as category_name, c.group_name as category_group
              FROM transactions t JOIN categories c ON c.id = t.category_id
              ${where} ORDER BY t.date DESC, t.id DESC`
@@ -58,6 +58,7 @@ export async function POST(req: Request) {
   const qty = Math.max(0, Math.floor(Number(body.qty ?? 0) || 0))
   const feePerUnit = Math.max(0, Math.floor(Number(body.fee_per_unit ?? 0) || 0))
   const totalPaid = Math.max(0, Math.floor(Number(body.total_paid ?? 0) || 0))
+  const customerName = body.customer_name ? String(body.customer_name).trim().slice(0, 100) : null
   const note = body.note ? String(body.note).trim() : null
 
   if (!categoryId) return errorJson('Kategori wajib dipilih', 400)
@@ -68,9 +69,9 @@ export async function POST(req: Request) {
   const total = qty * feePerUnit // pendapatan bersih (fee admin yang didapat)
 
   const res = await db.execute({
-    sql: `INSERT INTO transactions (category_id, date, qty, fee_per_unit, total, total_paid, note)
-          VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *`,
-    args: [categoryId, date, qty, feePerUnit, total, totalPaid, note],
+    sql: `INSERT INTO transactions (category_id, date, qty, fee_per_unit, total, total_paid, customer_name, note)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`,
+    args: [categoryId, date, qty, feePerUnit, total, totalPaid, customerName, note],
   })
   return json({ transaction: res.rows[0] }, 201)
 }

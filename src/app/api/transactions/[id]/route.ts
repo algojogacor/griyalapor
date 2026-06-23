@@ -29,6 +29,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (body.total_paid !== undefined) {
     fields.push('total_paid = ?'); args.push(Math.max(0, Math.floor(Number(body.total_paid) || 0)))
   }
+  if (body.customer_name !== undefined) {
+    fields.push('customer_name = ?'); args.push(body.customer_name ? String(body.customer_name).trim().slice(0, 100) : null)
+  }
   if (body.note !== undefined) {
     fields.push('note = ?'); args.push(body.note ? String(body.note).trim().slice(0, 200) : null)
   }

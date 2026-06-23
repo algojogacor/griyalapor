@@ -85,7 +85,7 @@ const TOOLS: MistralTool[] = [
                   type: 'object',
                   description:
                     'create_category: {name, group?, default_fee}. ' +
-                    'create_transaction: {category_name atau category_id, date(YYYY-MM-DD), qty, fee_per_unit, total_paid?(total uang dari pembeli = omzet, 0 jika tidak disebut), note?}. ' +
+                    'create_transaction: {category_name atau category_id, date(YYYY-MM-DD), qty, fee_per_unit, total_paid?(total uang dari pembeli = omzet, 0 jika tidak disebut), customer_name?(nama pelanggan, opsional, untuk tracking), note?}. ' +
                     'update_category_fee: {category_name atau category_id, new_fee}.',
                 },
               },
@@ -128,9 +128,10 @@ ATURAN AKSI:
 4. Kalau kategori yang disebut user belum ada, usulkan buat kategori dulu (tebak grup & fee default masuk akal) lalu catat transaksinya dalam SATU proposal.
 5. "adminnya 3000" / "fee 3000" = fee per unit (rupiah).
 6. Kalau user sebut total uang dari pembeli (mis. "total 14 juta", "uang masuk 2 juta"), sertakan total_paid di payload transaksi = omzet. Kalau tidak disebut, biarkan total_paid = 0.
-7. Jangan mengarang data. Kalau ragu (mis. kategori ambigu), tanya klarifikasi singkat.
-8. Format uang selalu Rp + titik ribuan. Contoh: Rp1.234.000.
-9. Untuk rekap: ambil data via get_summary/get_transactions, rangkum dengan poin ringkas. Utamakan pendapatan bersih. Sebut omzet hanya kalau ada datanya, dan pengeluaran hanya kalau ada.`
+7. Kalau user sebut nama pelanggan (mis. "dari Pak Budi", "pelanggan Bu Siti", "atas nama Pak Joko"), sertakan customer_name di payload transaksi. Ini opsional — hanya kalau disebut. Jangan tanya nama kalau user tidak sebut.
+8. Jangan mengarang data. Kalau ragu (mis. kategori ambigu), tanya klarifikasi singkat.
+9. Format uang selalu Rp + titik ribuan. Contoh: Rp1.234.000.
+10. Untuk rekap: ambil data via get_summary/get_transactions, rangkum dengan poin ringkas. Utamakan pendapatan bersih. Sebut omzet hanya kalau ada datanya, dan pengeluaran hanya kalau ada.`
 }
 
 // ---------- Eksekusi tool baca ----------
@@ -152,16 +153,17 @@ async function executeReadTool(name: string, args: Record<string, unknown>): Pro
     if (to) { cond.push('t.date <= ?'); a.push(to) }
     const where = cond.length ? 'WHERE ' + cond.join(' AND ') : ''
     const res = await db.execute({
-      sql: `SELECT t.id, t.date, t.qty, t.fee_per_unit, t.total, t.total_paid, t.note, c.name as category_name
+      sql: `SELECT t.id, t.date, t.qty, t.fee_per_unit, t.total, t.total_paid, t.customer_name, t.note, c.name as category_name
             FROM transactions t JOIN categories c ON c.id = t.category_id ${where} ORDER BY t.date DESC, t.id DESC LIMIT 50`,
       args: a,
     })
     const rows = res.rows.map((r) => {
-      const x = r as { id: number; date: string; qty: number; fee_per_unit: number; total: number; total_paid: number; note: string | null; category_name: string }
+      const x = r as { id: number; date: string; qty: number; fee_per_unit: number; total: number; total_paid: number; customer_name: string | null; note: string | null; category_name: string }
       return {
         id: x.id, date: x.date, category: x.category_name, qty: x.qty, fee_per_unit: x.fee_per_unit,
         pendapatan_bersih: x.total, // fee admin yang didapat
         total_paid: x.total_paid,   // total uang dari pembeli = omzet (0 jika tidak dicatat)
+        customer_name: x.customer_name, // nama pelanggan (opsional)
         note: x.note,
       }
     })
@@ -223,14 +225,16 @@ async function executeProposal(proposal: Proposal): Promise<{ results: string[];
         const qty = Math.max(0, Math.floor(Number(action.payload.qty ?? 0) || 0))
         const fee = Math.max(0, Math.floor(Number(action.payload.fee_per_unit ?? 0) || 0))
         const totalPaid = Math.max(0, Math.floor(Number(action.payload.total_paid ?? 0) || 0))
+        const customerName = action.payload.customer_name ? String(action.payload.customer_name).trim().slice(0, 100) : null
         const note = action.payload.note ? String(action.payload.note).trim().slice(0, 200) : null
         const total = qty * fee // pendapatan bersih (fee admin)
         await db.execute({
-          sql: 'INSERT INTO transactions (category_id, date, qty, fee_per_unit, total, total_paid, note) VALUES (?, ?, ?, ?, ?, ?, ?)',
-          args: [categoryId, date, qty, fee, total, totalPaid, note],
+          sql: 'INSERT INTO transactions (category_id, date, qty, fee_per_unit, total, total_paid, customer_name, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+          args: [categoryId, date, qty, fee, total, totalPaid, customerName, note],
         })
         const omzetInfo = totalPaid > 0 ? ` (omzet ${totalPaid})` : ''
-        results.push(`✓ Transaksi: ${catName || 'kategori #' + categoryId} — ${qty} × ${fee} = ${total}${omzetInfo} (${date})`)
+        const custInfo = customerName ? ` pelanggan "${customerName}"` : ''
+        results.push(`✓ Transaksi: ${catName || 'kategori #' + categoryId} — ${qty} × ${fee} = ${total}${omzetInfo}${custInfo} (${date})`)
       } else if (action.type === 'update_category_fee') {
         let categoryId = Number(action.payload.category_id) || 0
         const catName = action.payload.category_name ? String(action.payload.category_name).trim() : ''

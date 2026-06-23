@@ -45,7 +45,7 @@ export function MonthlyChart({ data, expensesEnabled }: { data: MonthlyTrendPoin
 
   return (
     <div className="w-full h-full text-muted-foreground">
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer width="100%" height="100%" debounce={50}>
         <BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }} barGap={4}>
           <CartesianGrid strokeDasharray="3 3" stroke="currentColor" strokeOpacity={0.15} vertical={false} />
           <XAxis

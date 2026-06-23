@@ -34,6 +34,8 @@ import {
   CalendarRange,
   BarChart3,
   ReceiptText,
+  Users,
+  User,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -59,6 +61,7 @@ interface Txn {
   total: number          // pendapatan bersih (admin)
   bill_per_unit: number
   total_paid: number
+  customer_name: string | null
   note: string | null
   category_name: string
   category_group: string | null
@@ -69,6 +72,16 @@ interface Expense {
   date: string
   label: string
   amount: number
+}
+
+interface Customer {
+  name: string
+  count: number
+  admin: number
+  omzet: number
+  qty: number
+  first_date: string
+  last_date: string
 }
 
 async function fetchJSON<T>(url: string): Promise<T> {
@@ -120,7 +133,15 @@ export function ReportsSection() {
     enabled: expensesEnabled,
   })
 
-  const txns = txData?.transactions ?? []
+  // Daftar pelanggan pada rentang ini — untuk filter & tracking
+  const { data: custData } = useQuery({
+    queryKey: ['customers', from, to],
+    queryFn: () => fetchJSON<{ customers: Customer[] }>(`/api/customers?${rangeParams}`),
+  })
+  const [customerFilter, setCustomerFilter] = useState<string>('') // '' = semua
+  const customers: Customer[] = custData?.customers ?? []
+
+  const txns = (txData?.transactions ?? []).filter((t) => !customerFilter || t.customer_name === customerFilter)
   const expenses = expData?.expenses ?? []
 
   const totalAdmin = useMemo(() => txns.reduce((s, t) => s + t.total, 0), [txns]) // pendapatan bersih (fee admin)
@@ -323,6 +344,43 @@ export function ReportsSection() {
           ))}
         </div>
 
+        {/* Filter pelanggan — untuk tracking transaksi per pelanggan */}
+        {customers.length > 0 && (
+          <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-2">
+            <Label className="text-sm font-medium flex items-center gap-1.5 shrink-0">
+              <User className="w-4 h-4" /> Filter Pelanggan:
+            </Label>
+            <div className="flex flex-wrap gap-2 flex-1">
+              <button
+                onClick={() => setCustomerFilter('')}
+                className={cn(
+                  'h-9 px-3 rounded-lg text-sm font-medium border transition-colors',
+                  customerFilter === ''
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-card hover:bg-secondary text-foreground/80',
+                )}
+              >
+                Semua ({txData?.transactions?.length ?? 0})
+              </button>
+              {customers.slice(0, 8).map((c) => (
+                <button
+                  key={c.name}
+                  onClick={() => setCustomerFilter(c.name)}
+                  className={cn(
+                    'h-9 px-3 rounded-lg text-sm font-medium border transition-colors max-w-[200px] truncate',
+                    customerFilter === c.name
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'bg-card hover:bg-secondary text-foreground/80',
+                  )}
+                  title={`${c.name} · ${c.count} transaksi · ${formatRupiah(c.admin)}`}
+                >
+                  {c.name} <span className="opacity-60">({c.count})</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="flex flex-wrap gap-2 mt-3">
           <Button onClick={exportCSV} variant="outline" className="h-11">
             <Download className="w-4 h-4" /> Export CSV
@@ -471,6 +529,68 @@ export function ReportsSection() {
           </Table>
         )}
       </Card>
+
+      {/* Pelanggan teratas pada rentang ini — tracking siapa saja yang bayar */}
+      {customers.length > 0 && (
+        <Card className="p-5">
+          <div className="flex items-center gap-2 mb-1">
+            <Users className="w-5 h-5 text-primary" />
+            <h2 className="font-bold text-lg">Pelanggan Teratas</h2>
+          </div>
+          <p className="text-sm text-muted-foreground mb-3">
+            Tracking pelanggan pada rentang {from} s/d {to}
+            {customerFilter ? ` · sedang difilter: ${customerFilter}` : ''}
+          </p>
+          <div className="space-y-2 max-h-96 overflow-y-auto scroll-thin pr-1">
+            {customers.map((c, i) => {
+              const maxAdmin = customers[0]?.admin || 1
+              const isActive = customerFilter === c.name
+              return (
+                <button
+                  key={c.name}
+                  onClick={() => setCustomerFilter(isActive ? '' : c.name)}
+                  className={cn(
+                    'w-full text-left py-2.5 px-3 rounded-xl border transition-colors',
+                    isActive ? 'border-primary bg-primary/5' : 'border-transparent hover:bg-secondary/60',
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className={cn(
+                        'w-9 h-9 rounded-full flex items-center justify-center shrink-0 font-bold text-xs',
+                        i === 0 ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+                          : i === 1 ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+                          : i === 2 ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300'
+                          : 'bg-primary/10 text-primary'
+                      )}>
+                        {i === 0 ? '★' : i + 1}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-medium truncate">{c.name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {c.count} transaksi · {c.qty} pelanggan/IDPEL · terakhir {c.last_date}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="font-semibold tabular-nums">{formatRupiah(c.admin)}</div>
+                      {c.omzet > c.admin && (
+                        <div className="text-[11px] text-muted-foreground tabular-nums">omzet {formatRupiah(c.omzet)}</div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="mt-2 h-1.5 rounded-full bg-secondary overflow-hidden">
+                    <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${Math.max(4, (c.admin / maxAdmin) * 100)}%` }} />
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+          <p className="text-xs text-muted-foreground mt-3">
+            Klik nama pelanggan untuk memfilter transaksi di atas. Klik lagi untuk batal.
+          </p>
+        </Card>
+      )}
     </div>
   )
 }
@@ -574,6 +694,7 @@ function buildPrintHTML(opts: {
         ${billCell}
         <td style="text-align:right">${fmt(t.total)}</td>
         ${omzetCell}
+        <td>${esc(t.customer_name ?? '')}</td>
         <td>${esc(t.note ?? '')}</td>
       </tr>`
       },
@@ -681,12 +802,13 @@ function buildPrintHTML(opts: {
         ${hasOmzet ? '<th style="text-align:right">Tagihan/Unit</th>' : ''}
         <th style="text-align:right">Pendapatan Bersih</th>
         ${hasOmzet ? '<th style="text-align:right">Omzet</th>' : ''}
+        <th>Pelanggan</th>
         <th>Catatan</th>
       </tr>
     </thead>
     <tbody>
-      ${txRows || `<tr><td colspan="${hasOmzet ? 9 : 7}" style="text-align:center;color:#888">Tidak ada transaksi</td></tr>`}
-      <tr class="total"><td colspan="${hasOmzet ? 6 : 5}">TOTAL PENDAPATAN BERSIH (FEE ADMIN)</td><td style="text-align:right">${fmt(totalAdmin)}</td>${hasOmzet ? '<td style="text-align:right">' + fmt(totalOmzet) + '</td>' : ''}<td></td></tr>
+      ${txRows || `<tr><td colspan="${hasOmzet ? 10 : 8}" style="text-align:center;color:#888">Tidak ada transaksi</td></tr>`}
+      <tr class="total"><td colspan="${hasOmzet ? 7 : 6}">TOTAL PENDAPATAN BERSIH (FEE ADMIN)</td><td style="text-align:right">${fmt(totalAdmin)}</td>${hasOmzet ? '<td style="text-align:right">' + fmt(totalOmzet) + '</td>' : ''}<td></td><td></td></tr>
     </tbody>
   </table>
 

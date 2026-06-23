@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -15,12 +15,12 @@ import { RupiahInput } from '@/components/app/RupiahInput'
 import { formatRupiah, formatLongDate, todayISO, parseRupiahInput } from '@/lib/format'
 import { getCategoryColor, getCategoryInitial } from '@/lib/category-colors'
 import { toast } from 'sonner'
-import { Plus, Trash2, Search, ReceiptText, Pencil } from 'lucide-react'
+import { Plus, Trash2, Search, ReceiptText, Pencil, User } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface Category { id: number; name: string; group_name: string | null; default_fee: number }
 interface Txn {
-  id: number; date: string; qty: number; fee_per_unit: number; total: number; total_paid: number; note: string | null
+  id: number; date: string; qty: number; fee_per_unit: number; total: number; total_paid: number; customer_name: string | null; note: string | null
   category_name: string; category_group: string | null
 }
 
@@ -29,12 +29,14 @@ export function TransactionsSection() {
   const qc = useQueryClient()
   const { data: catData } = useQuery({ queryKey: ['categories'], queryFn: () => fetch('/api/categories').then((r) => r.json()) })
   const categories: Category[] = catData?.categories ?? []
+  const submittingRef = useRef(false)
 
   const [date, setDate] = useState(todayISO())
   const [categoryId, setCategoryId] = useState<string>('')
   const [qty, setQty] = useState('')
   const [fee, setFee] = useState('')
   const [totalPaid, setTotalPaid] = useState('')
+  const [customerName, setCustomerName] = useState('')
   const [note, setNote] = useState('')
 
   function selectCategory(id: string) {
@@ -59,23 +61,29 @@ export function TransactionsSection() {
       toast.success('Transaksi berhasil dicatat')
       qc.invalidateQueries({ queryKey: ['transactions'] })
       qc.invalidateQueries({ queryKey: ['summary'] })
-      setDate(todayISO()); setCategoryId(''); setQty(''); setFee(''); setTotalPaid(''); setNote('')
+      qc.invalidateQueries({ queryKey: ['customers'] })
+      setDate(todayISO()); setCategoryId(''); setQty(''); setFee(''); setTotalPaid(''); setCustomerName(''); setNote('')
       setOpen(false)
     },
     onError: (e: Error) => toast.error(e.message),
   })
 
   function submit() {
+    if (submittingRef.current) return // anti double-submit
     if (!categoryId) return toast.error('Pilih kategori dulu')
     const qVal = parseRupiahInput(qty)
     if (qVal <= 0) return toast.error('Jumlah harus lebih dari 0')
+    submittingRef.current = true
     addMutation.mutate({
       category_id: Number(categoryId),
       date,
       qty: qVal,
       fee_per_unit: parseRupiahInput(fee),
       total_paid: parseRupiahInput(totalPaid),
+      customer_name: customerName.trim() || null,
       note: note.trim() || null,
+    }, {
+      onSettled: () => { submittingRef.current = false },
     })
   }
 
@@ -152,6 +160,17 @@ export function TransactionsSection() {
               <p className="text-xs text-muted-foreground">Total seluruh uang dari pembeli (sudah termasuk fee). Tiap pelanggan beda nominal, jadi dijumlahkan. Boleh dikosongkan</p>
             </div>
 
+            <div className="space-y-1.5">
+              <Label htmlFor="customer" className="text-sm font-medium flex items-center gap-1.5">
+                <User className="w-3.5 h-3.5" /> Nama Pelanggan (opsional)
+              </Label>
+              <Input
+                id="customer" value={customerName} onChange={(e) => setCustomerName(e.target.value)}
+                placeholder="contoh: Pak Budi" className="h-12" maxLength={100}
+              />
+              <p className="text-xs text-muted-foreground">Catat nama pelanggan untuk tracking siapa saja yang bayar. Boleh dikosongkan</p>
+            </div>
+
             <div className="rounded-xl bg-primary/10 p-4 space-y-1.5">
               <div className="flex items-center justify-between">
                 <span className="font-medium">Pendapatan Bersih (fee admin)</span>
@@ -161,6 +180,12 @@ export function TransactionsSection() {
                 <div className="flex items-center justify-between text-sm text-muted-foreground pt-1 border-t border-primary/20">
                   <span>Omzet (uang dari pembeli)</span>
                   <span className="font-semibold tabular-nums">{formatRupiah(tp)}</span>
+                </div>
+              )}
+              {customerName.trim() && (
+                <div className="flex items-center justify-between text-sm text-muted-foreground pt-1 border-t border-primary/20">
+                  <span>Pelanggan</span>
+                  <span className="font-semibold truncate ml-2 max-w-[60%] text-right">{customerName.trim()}</span>
                 </div>
               )}
             </div>
@@ -204,7 +229,7 @@ function TransactionList() {
   })
   const txns: Txn[] = data?.transactions ?? []
   const filtered = search
-    ? txns.filter((t) => (t.category_name + ' ' + (t.note ?? '')).toLowerCase().includes(search.toLowerCase()))
+    ? txns.filter((t) => (t.category_name + ' ' + (t.customer_name ?? '') + ' ' + (t.note ?? '')).toLowerCase().includes(search.toLowerCase()))
     : txns
 
   const deleteMutation = useMutation({
@@ -238,7 +263,7 @@ function TransactionList() {
 
       <div className="relative mb-3">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari kategori atau catatan..." className="pl-9 h-11" />
+        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari kategori, pelanggan, atau catatan..." className="pl-9 h-11" />
       </div>
 
       {isLoading ? (
@@ -284,6 +309,7 @@ function TransactionList() {
                               <div className="font-medium truncate">{t.category_name}</div>
                               <div className="text-xs text-muted-foreground">
                                 {t.qty} × {formatRupiah(t.fee_per_unit)}
+                                {t.customer_name ? ` · ${t.customer_name}` : ''}
                                 {t.note ? ` · ${t.note}` : ''}
                               </div>
                               {t.total_paid > 0 && (
@@ -336,12 +362,13 @@ function TransactionList() {
             <AlertDialogDescription>Transaksi yang dihapus tidak bisa dikembalikan.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="h-11">Batal</AlertDialogCancel>
+            <AlertDialogCancel className="h-11" disabled={deleteMutation.isPending}>Batal</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => deleteId && deleteMutation.mutate(deleteId)}
+              disabled={deleteMutation.isPending}
               className="h-11 bg-destructive hover:bg-destructive/90"
             >
-              Hapus
+              {deleteMutation.isPending ? 'Menghapus...' : 'Hapus'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -367,6 +394,7 @@ function EditTransactionDialog({ txn, onClose, onSaved }: { txn: Txn; onClose: (
   const [qty, setQty] = useState(String(txn.qty))
   const [fee, setFee] = useState(String(txn.fee_per_unit))
   const [totalPaid, setTotalPaid] = useState(String(txn.total_paid))
+  const [customerName, setCustomerName] = useState(txn.customer_name ?? '')
   const [note, setNote] = useState(txn.note ?? '')
 
   const q = parseRupiahInput(qty) || 0
@@ -384,6 +412,7 @@ function EditTransactionDialog({ txn, onClose, onSaved }: { txn: Txn; onClose: (
           qty: q,
           fee_per_unit: f,
           total_paid: tp,
+          customer_name: customerName.trim() || null,
           note: note.trim() || null,
         }),
       })
@@ -399,7 +428,7 @@ function EditTransactionDialog({ txn, onClose, onSaved }: { txn: Txn; onClose: (
 
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md" aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle>Edit Transaksi · {txn.category_name}</DialogTitle>
         </DialogHeader>
@@ -421,6 +450,10 @@ function EditTransactionDialog({ txn, onClose, onSaved }: { txn: Txn; onClose: (
           <div className="space-y-1.5">
             <Label className="font-medium">Total Dibayar Pembeli / Omzet (opsional)</Label>
             <RupiahInput value={totalPaid} onChange={setTotalPaid} className="h-12 text-lg font-semibold text-center tabular-nums" />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="font-medium flex items-center gap-1.5"><User className="w-3.5 h-3.5" /> Nama Pelanggan (opsional)</Label>
+            <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="contoh: Pak Budi" className="h-12" maxLength={100} />
           </div>
           <div className="rounded-xl bg-primary/10 p-3 space-y-1">
             <div className="flex items-center justify-between text-sm">

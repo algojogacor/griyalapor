@@ -97,10 +97,36 @@ export async function GET() {
 
   // Transaksi terakhir (5)
   const recentRes = await db.execute({
-    sql: `SELECT t.id, t.category_id, t.date, t.qty, t.fee_per_unit, t.total, t.total_paid, t.note,
+    sql: `SELECT t.id, t.category_id, t.date, t.qty, t.fee_per_unit, t.total, t.total_paid, t.customer_name, t.note,
                  c.name as category_name, c.group_name as category_group
           FROM transactions t JOIN categories c ON c.id = t.category_id
           ORDER BY t.id DESC LIMIT 5`,
+  })
+
+  // Pelanggan teratas bulan ini (untuk tracking) — top 5 by admin earned
+  const topCustomersRes = await db.execute({
+    sql: `SELECT customer_name,
+                 COUNT(*) as count,
+                 COALESCE(SUM(total),0) as admin,
+                 COALESCE(SUM(total_paid),0) as omzet,
+                 MAX(date) as last_date
+          FROM transactions
+          WHERE customer_name IS NOT NULL AND TRIM(customer_name) != ''
+            AND date >= ? AND date <= ?
+          GROUP BY customer_name
+          ORDER BY admin DESC, count DESC
+          LIMIT 5`,
+    args: [month.from, month.to],
+  })
+  const topCustomers = topCustomersRes.rows.map((r) => {
+    const x = r as { customer_name: string; count: number; admin: number; omzet: number; last_date: string }
+    return {
+      name: x.customer_name,
+      count: Number(x.count),
+      admin: Number(x.admin),
+      omzet: Number(x.omzet),
+      last_date: x.last_date,
+    }
   })
 
   return json({
@@ -111,6 +137,7 @@ export async function GET() {
     expenses: { today: todayExp, week: weekExp, month: monthExp },
     breakdown,
     monthlyTrend,
+    topCustomers,
     recentTransactions: recentRes.rows,
   })
 }

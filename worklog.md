@@ -274,3 +274,57 @@ Stage Summary:
 - Transaksi lama yang tidak punya total_paid (data test) akan tampil omzet=0 / omzet=bersih. Expected.
 - Bisa tambah: input "uang diteruskan ke penyedia" = total_paid - (qty×fee) sebagai info turunan (opsional).
 - Bisa tambah validasi: total_paid harus >= qty×fee (omzet minimal = bersih, karena fee include).
+
+---
+Task ID: 11
+Agent: main (orchestrator) — user feature request + full QA pass
+Task: Tambah field nama pelanggan (customer_name) ke transaksi + laporan, fitur Akses Cepat customizable, stress test protections, full QA pass 6 area
+
+Work Log:
+- [FEATURE] Field "Nama Pelanggan" (customer_name) di seluruh aplikasi:
+  - DB: ALTER TABLE transactions ADD COLUMN customer_name TEXT (idempotent migration di scripts/migrate.ts via PRAGMA table_info)
+  - API: transactions GET/POST/PATCH, summary (recent + topCustomers aggregate), export CSV (kolom Pelanggan), import (customer_name field + detect header "pelanggan|customer|atas nama|konsumen"), agent (get_transactions return customer_name, propose_action payload deskripsi + eksekusi simpan customer_name, system prompt aturan #7)
+  - New API /api/customers — daftar pelanggan unik dengan statistik (count, admin, omzet, qty, first/last_date) untuk filter & tracking
+  - UI TransactionsSection: form input "Nama Pelanggan (opsional)" + preview pelanggan, list tampilkan customer_name, search termasuk pelanggan, EditTransactionDialog field customer_name
+  - UI DashboardSection: QuickAddDialog field customer_name, recent transactions tampilkan customer, kartu baru "Pelanggan Teratas Bulan Ini" (top 5, rank ★, progress bar)
+  - UI ReportsSection: filter pelanggan (chip buttons), kartu "Pelanggan Teratas" (klik untuk filter, rank medal emas/perak/perunggu), print HTML kolom Pelanggan
+  - UI ImportSection: field customer_name, preview table kolom Pelanggan, sample CSV kolom Pelanggan, sinonim "Pelanggan → Customer/Atas Nama/Konsumen"
+  - UI AgentChat: ActionRow tampilkan "Pelanggan" di proposal, quick suggestions update ("dari Pak Budi", "pelanggan Bu Siti")
+
+- [FEATURE] Akses Cepat customizable (src/components/app/ManageQuickAccess.tsx):
+  - Dialog "Kelola Akses Cepat" dengan add/remove/reorder (arrow up/down), edit fee khusus per item (override default_fee kategori), reset ke mode otomatis
+  - Setting quick_access disimpan sebagai JSON di tabel settings (key=quick_access)
+  - Dashboard baca settings.quick_access: jika ada → mode kustom (urutan + fee override), jika kosong → mode otomatis (kategori teratas bulan ini)
+  - Tombol "Kelola" (icon Settings2) di kartu Akses Cepat, indikator "kustom" badge amber jika fee di-override
+  - QuickAddDialog terima feeOverride prop → fee pre-filled pakai override, bukan default_fee
+
+- [STRESS TEST] Proteksi double-submit & double-click:
+  - TransactionsSection submit(): ref guard submittingRef.current — anti triple/quadruple click (verified: 4x click → hanya 1 transaksi tersimpan)
+  - Delete buttons (Transactions, Expenses, Categories): disabled={mutation.isPending} + label "Menghapus..." saat pending
+  - Submit buttons sudah ada disabled={isPending} (form Transaksi, Pengeluaran, Impor, Edit)
+
+- [QA FIX] Accessibility & polish:
+  - DialogContent aria-describedby={undefined} di 4 dialog (EditTransaction, QuickAdd, ManageQuickAccess, CategoryDialog) — hilangkan warning "Missing Description"
+  - MonthlyChart ResponsiveContainer debounce={50} — kurangi warning width(0) saat mount (cosmetic, chart render OK 908x342px)
+
+VERIFIKASI agent-browser (full QA pass 6 area):
+1. Logic Keuangan: form qty=5 fee=3000 → preview Bersih Rp15.000 → tersimpan total=15000 ✓; summary hari ini/minggu/bulan akurat; undo benar hapus transaksi terakhir (id 8→7)
+2. AI Agent: "catat 8 PLN pascabayar admin 3000 dari Bu Siti" → parsing benar (qty=8, fee=3000, customer=Bu Siti) → proposal "Konfirmasi Aksi" muncul → confirm → tersimpan (Bu Siti, 24000) ✓; error handling ramah
+3. Database & CRUD: tambah/edit/hapus semua tersimpan ke Turso + refresh UI ✓; customer API return 2 pelanggan
+4. UI & Responsivitas: desktop sidebar (nav0 display=flex) + mobile bottom nav (nav1 md:hidden display=none di desktop) ✓; dark mode toggle works (html class dark) + readability OK; empty state "Belum ada transaksi" ✓; loading skeleton ✓
+5. Edge Cases: empty submit → toast "Pilih kategori dulu" + form tetap open ✓; empty date range → total 0 clean; kategori 0 transaksi → tampil normal di breakdown
+6. PWA: manifest.json 200, sw.js 200, icon.svg 200; SW register hanya di production (NODE_ENV=production) — dev skip intentional
+
+Stage Summary:
+- Field nama pelanggan terintegrasi end-to-end: form → DB → list → dashboard → laporan → export CSV/PDF → AI agent → import CSV. Opsional (wajib hanya kategori, qty, fee, total_paid).
+- Fitur Akses Cepat sekarang fully customizable: user bisa atur urutan, tambah/hapus kategori, dan set fee admin khusus per item. Tersimpan di settings, sync dengan QuickAddDialog.
+- Stress test passed: quadruple-click submit → 1 transaksi (ref guard); delete buttons disabled saat pending.
+- Full QA 6 area PASSED. Lint PASS. Dark mode works. Responsive (sidebar/bottom-nav switch). Accessibility warnings fixed.
+
+## Status Proyek
+- STABIL & fitur lengkap. Customer tracking + Akses Cepat customizable + stress-test hardened. Lint PASS, QA terverifikasi end-to-end.
+
+## Risiko / Saran next
+- Chart width(0) warning masih muncul 2x saat mount Reports (cosmetic, recharts known issue, chart render OK) — low priority
+- SW hanya register di production — saat deploy akan aktif otomatis
+- Bisa tambah: search pelanggan by name di Transactions (saat ini filter client-side sudah include customer), export per pelanggan, recurring expenses, data backup/restore JSON, iOS install instructions
