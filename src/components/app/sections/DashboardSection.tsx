@@ -136,14 +136,15 @@ export function DashboardSection() {
       </div>
 
       {/* Hero card hari ini */}
-      <Card className="relative overflow-hidden p-5 md:p-7 bg-gradient-to-br from-primary to-primary/80 text-primary-foreground border-0 shadow-md">
+      <Card className="relative overflow-hidden p-5 md:p-7 bg-gradient-to-br from-primary to-primary/80 text-primary-foreground border-0 shadow-lg">
         <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle at 20% 30%, white 1px, transparent 1px), radial-gradient(circle at 70% 60%, white 1px, transparent 1px)', backgroundSize: '48px 48px, 64px 64px' }} />
-        <div className="flex items-start justify-between gap-3">
+        <div className="absolute -right-8 -top-8 w-40 h-40 rounded-full bg-white/5 blur-2xl pointer-events-none" />
+        <div className="relative flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-primary-foreground/80 text-sm font-medium flex items-center gap-1.5">
               <Wallet className="w-4 h-4" /> Pendapatan Hari Ini (fee admin)
             </p>
-            <div className="text-3xl md:text-5xl font-bold mt-1 tracking-tight tabular-nums">
+            <div className="text-3xl md:text-5xl font-bold mt-1 tracking-tight tabular-nums drop-shadow-sm">
               {isLoading ? <Skeleton className="h-12 w-48 bg-white/20" /> : formatRupiah(data?.today.admin)}
             </div>
             <p className="text-primary-foreground/80 text-sm mt-2">
@@ -155,14 +156,14 @@ export function DashboardSection() {
               </p>
             )}
           </div>
-          <div className="hidden sm:flex w-14 h-14 rounded-2xl bg-white/15 items-center justify-center shrink-0">
+          <div className="hidden sm:flex w-14 h-14 rounded-2xl bg-white/15 items-center justify-center shrink-0 backdrop-blur-sm">
             <TrendingUp className="w-7 h-7" />
           </div>
         </div>
-        <div className="flex gap-2 mt-5">
+        <div className="relative flex gap-2 mt-5">
           <Button
             onClick={() => setSection('transactions')}
-            className="bg-white text-primary hover:bg-white/90 font-semibold h-12 px-5"
+            className="bg-white text-primary hover:bg-white/90 font-semibold h-12 px-5 shadow-sm"
           >
             <Plus className="w-5 h-5" /> Catat Transaksi
           </Button>
@@ -170,7 +171,7 @@ export function DashboardSection() {
             onClick={() => undoMutation.mutate()}
             disabled={undoMutation.isPending}
             variant="secondary"
-            className="bg-white/15 text-primary-foreground hover:bg-white/25 border-0 h-12 px-4"
+            className="bg-white/15 text-primary-foreground hover:bg-white/25 border-0 h-12 px-4 backdrop-blur-sm"
           >
             <Undo2 className="w-5 h-5" /> Batal Terakhir
           </Button>
@@ -525,12 +526,15 @@ function QuickAddDialog({ category, feeOverride, onClose, onSaved }: { category:
 function StatCard({ label, value, omzet, count, loading, highlight }: { label: string; value?: number; omzet?: number; count?: number; loading?: boolean; highlight?: boolean }) {
   const showOmzet = omzet !== undefined && value !== undefined && omzet > value
   return (
-    <Card className={cn('p-4', highlight && 'ring-1 ring-primary/30')}>
-      <p className="text-sm text-muted-foreground">{label}</p>
-      <div className="text-2xl font-bold mt-1 tabular-nums">{loading ? <Skeleton className="h-8 w-28" /> : formatRupiah(value)}</div>
-      <p className="text-xs text-muted-foreground mt-0.5">
-        {count ?? 0} transaksi{showOmzet ? ` · Omzet ${formatRupiah(omzet)}` : ''}
-      </p>
+    <Card className={cn('relative overflow-hidden p-4 transition-all duration-200', highlight && 'ring-1 ring-primary/30 shadow-sm')}>
+      {highlight && <div className="absolute -right-4 -top-4 w-20 h-20 rounded-full bg-primary/5 blur-xl pointer-events-none" />}
+      <div className="relative">
+        <p className="text-sm text-muted-foreground">{label}</p>
+        <div className="text-2xl font-bold mt-1 tabular-nums">{loading ? <Skeleton className="h-8 w-28" /> : formatRupiah(value)}</div>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          {count ?? 0} transaksi{showOmzet ? ` · Omzet ${formatRupiah(omzet)}` : ''}
+        </p>
+      </div>
     </Card>
   )
 }

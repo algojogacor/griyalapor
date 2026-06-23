@@ -17,6 +17,7 @@ import { ImportSection } from './sections/ImportSection'
 import { SettingsSection } from './sections/SettingsSection'
 import { ExpensesSection } from './sections/ExpensesSection'
 import { InstallPrompt } from './InstallPrompt'
+import { IosInstallInstructions } from './IosInstallInstructions'
 import { AgentChat } from './agent/AgentChat'
 
 const NAV_BASE: { id: SectionId; label: string; icon: typeof Home }[] = [
@@ -108,7 +109,12 @@ export function AppShell() {
         {/* Main content */}
         <main className="flex-1 min-w-0 pb-24 md:pb-8">
           <div className="max-w-5xl mx-auto px-4 py-5 md:py-7">
-            {activeSection === 'dashboard' && <DashboardSection />}
+            {activeSection === 'dashboard' && (
+              <>
+                <IosInstallInstructions />
+                <DashboardSection />
+              </>
+            )}
             {activeSection === 'transactions' && <TransactionsSection />}
             {activeSection === 'categories' && <CategoriesSection />}
             {activeSection === 'reports' && <ReportsSection />}

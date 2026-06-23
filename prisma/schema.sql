@@ -30,9 +30,21 @@ CREATE TABLE IF NOT EXISTS expenses (
   date TEXT NOT NULL,
   label TEXT NOT NULL,
   amount INTEGER NOT NULL,
+  recurring_id INTEGER,              -- referensi ke recurring_expenses (NULL = manual)
   created_at TEXT DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(date);
+CREATE INDEX IF NOT EXISTS idx_expenses_recurring ON expenses(recurring_id);
+
+CREATE TABLE IF NOT EXISTS recurring_expenses (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  label TEXT NOT NULL,
+  amount INTEGER NOT NULL,
+  day_of_month INTEGER NOT NULL DEFAULT 1,  -- tanggal berapa tiap bulan (1-28)
+  active INTEGER NOT NULL DEFAULT 1,        -- 1=aktif, 0=nonaktif
+  last_generated TEXT,                       -- YYYY-MM-DD terakhir di-generate
+  created_at TEXT DEFAULT (datetime('now'))
+);
 
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,

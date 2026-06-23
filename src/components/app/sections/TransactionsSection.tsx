@@ -15,7 +15,7 @@ import { RupiahInput } from '@/components/app/RupiahInput'
 import { formatRupiah, formatLongDate, todayISO, parseRupiahInput } from '@/lib/format'
 import { getCategoryColor, getCategoryInitial } from '@/lib/category-colors'
 import { toast } from 'sonner'
-import { Plus, Trash2, Search, ReceiptText, Pencil, User } from 'lucide-react'
+import { Plus, Trash2, Search, ReceiptText, Pencil, User, SlidersHorizontal } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface Category { id: number; name: string; group_name: string | null; default_fee: number }
@@ -214,6 +214,9 @@ function TransactionList() {
   const [search, setSearch] = useState('')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
+  const [minAmount, setMinAmount] = useState('')
+  const [maxAmount, setMaxAmount] = useState('')
+  const [showAdvanced, setShowAdvanced] = useState(false)
   const [deleteId, setDeleteId] = useState<number | null>(null)
   const [editTxn, setEditTxn] = useState<Txn | null>(null)
   const qc = useQueryClient()
@@ -228,9 +231,22 @@ function TransactionList() {
     queryFn: () => fetch('/api/transactions?' + params.toString()).then((r) => r.json()),
   })
   const txns: Txn[] = data?.transactions ?? []
-  const filtered = search
-    ? txns.filter((t) => (t.category_name + ' ' + (t.customer_name ?? '') + ' ' + (t.note ?? '')).toLowerCase().includes(search.toLowerCase()))
-    : txns
+
+  // Filter berdasarkan teks + rentang nominal (client-side)
+  const minVal = parseRupiahInput(minAmount) || 0
+  const maxVal = parseRupiahInput(maxAmount) || 0
+  const filtered = txns.filter((t) => {
+    if (search) {
+      const hay = (t.category_name + ' ' + (t.customer_name ?? '') + ' ' + (t.note ?? '')).toLowerCase()
+      if (!hay.includes(search.toLowerCase())) return false
+    }
+    // Amount filter — pakai total (pendapatan bersih) sebagai acuan
+    if (minVal > 0 && t.total < minVal) return false
+    if (maxVal > 0 && t.total > maxVal) return false
+    return true
+  })
+
+  const hasAdvancedFilter = minVal > 0 || maxVal > 0
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -266,6 +282,55 @@ function TransactionList() {
         <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari kategori, pelanggan, atau catatan..." className="pl-9 h-11" />
       </div>
 
+      {/* Advanced filter toggle */}
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
+        <button
+          onClick={() => setShowAdvanced((v) => !v)}
+          className={cn(
+            'text-xs px-2.5 py-1.5 rounded-lg border transition-colors flex items-center gap-1.5',
+            showAdvanced || hasAdvancedFilter
+              ? 'bg-primary/10 border-primary/30 text-primary'
+              : 'bg-card hover:bg-secondary text-muted-foreground',
+          )}
+        >
+          <SlidersHorizontal className="w-3.5 h-3.5" />
+          Filter Nominal
+          {hasAdvancedFilter && <span className="w-1.5 h-1.5 rounded-full bg-primary" />}
+        </button>
+        {hasAdvancedFilter && (
+          <button
+            onClick={() => { setMinAmount(''); setMaxAmount('') }}
+            className="text-xs px-2.5 py-1.5 rounded-lg text-muted-foreground hover:text-destructive transition-colors"
+          >
+            Reset
+          </button>
+        )}
+        {(search || from || to || hasAdvancedFilter) && (
+          <span className="text-xs text-muted-foreground ml-auto">{filtered.length} dari {txns.length} transaksi</span>
+        )}
+      </div>
+
+      {/* Advanced amount range filter */}
+      {showAdvanced && (
+        <div className="rounded-xl border bg-secondary/30 p-3 mb-3">
+          <p className="text-xs font-medium text-muted-foreground mb-2">Rentang Pendapatan Bersih (fee admin)</p>
+          <div className="flex items-center gap-2">
+            <div className="flex-1">
+              <RupiahInput value={minAmount} onChange={setMinAmount} placeholder="Min: 0" className="h-10 text-sm tabular-nums" />
+            </div>
+            <span className="text-muted-foreground text-sm shrink-0">—</span>
+            <div className="flex-1">
+              <RupiahInput value={maxAmount} onChange={setMaxAmount} placeholder="Max: ∞" className="h-10 text-sm tabular-nums" />
+            </div>
+          </div>
+          {(minVal > 0 || maxVal > 0) && (
+            <p className="text-xs text-primary mt-2">
+              Menampilkan transaksi dengan bersih {minVal > 0 ? formatRupiah(minVal) : 'Rp0'} – {maxVal > 0 ? formatRupiah(maxVal) : 'tanpa batas'}
+            </p>
+          )}
+        </div>
+      )}
+
       {isLoading ? (
         <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}</div>
       ) : filtered.length === 0 ? (
@@ -300,37 +365,45 @@ function TransactionList() {
                     <div className="space-y-1.5">
                       {g.items.map((t) => {
                         return (
-                          <div key={t.id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-secondary/60 transition-colors group">
-                            <div className={cn('w-11 h-11 rounded-xl flex flex-col items-center justify-center shrink-0 font-bold', getCategoryColor(t.category_group).bg, getCategoryColor(t.category_group).text)}>
+                          <div key={t.id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-secondary/60 hover:shadow-sm transition-all group border border-transparent hover:border-border/50">
+                            <div className={cn('w-11 h-11 rounded-xl flex flex-col items-center justify-center shrink-0 font-bold shadow-sm', getCategoryColor(t.category_group).bg, getCategoryColor(t.category_group).text)}>
                               <span className="text-[10px] leading-none opacity-70">{t.qty}x</span>
                               <span className="text-xs leading-tight">{getCategoryInitial(t.category_name)}</span>
                             </div>
                             <div className="min-w-0 flex-1">
-                              <div className="font-medium truncate">{t.category_name}</div>
-                              <div className="text-xs text-muted-foreground">
-                                {t.qty} × {formatRupiah(t.fee_per_unit)}
-                                {t.customer_name ? ` · ${t.customer_name}` : ''}
-                                {t.note ? ` · ${t.note}` : ''}
+                              <div className="font-medium truncate flex items-center gap-1.5">
+                                {t.category_name}
+                                {t.customer_name && (
+                                  <span className="inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-primary/10 text-primary shrink-0">
+                                    <User className="w-2.5 h-2.5" />{t.customer_name}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-xs text-muted-foreground flex items-center gap-1.5 flex-wrap">
+                                <span className="tabular-nums">{t.qty} × {formatRupiah(t.fee_per_unit)}</span>
+                                {t.note && <span className="opacity-60">· {t.note}</span>}
                               </div>
                               {t.total_paid > 0 && (
-                                <div className="text-[11px] text-muted-foreground/80 mt-0.5">Omzet {formatRupiah(t.total_paid)}</div>
+                                <div className="text-[11px] text-muted-foreground/80 mt-0.5 tabular-nums">Omzet {formatRupiah(t.total_paid)}</div>
                               )}
                             </div>
-                            <div className="font-semibold text-success tabular-nums shrink-0">+{formatRupiah(t.total)}</div>
-                            <button
-                              onClick={() => setEditTxn(t)}
-                              className="opacity-0 group-hover:opacity-100 transition-opacity p-2 text-muted-foreground hover:text-primary"
-                              aria-label="Edit transaksi"
-                            >
-                              <Pencil className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => setDeleteId(t.id)}
-                              className="opacity-0 group-hover:opacity-100 transition-opacity p-2 text-muted-foreground hover:text-destructive"
-                              aria-label="Hapus transaksi"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            <div className="font-bold text-success tabular-nums shrink-0 text-lg">+{formatRupiah(t.total)}</div>
+                            <div className="flex items-center gap-0.5 shrink-0">
+                              <button
+                                onClick={() => setEditTxn(t)}
+                                className="opacity-0 group-hover:opacity-100 transition-opacity p-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg"
+                                aria-label="Edit transaksi"
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => setDeleteId(t.id)}
+                                className="opacity-0 group-hover:opacity-100 transition-opacity p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg"
+                                aria-label="Hapus transaksi"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
                           </div>
                         )
                       })}

@@ -161,8 +161,46 @@
     background-color: var(--border);
     border-radius: 999px;
   }
+  .scroll-thin::-webkit-scrollbar-thumb:hover {
+    background-color: var(--muted-foreground);
+  }
   .scroll-thin::-webkit-scrollbar-track {
     background: transparent;
+  }
+
+  /* Focus ring konsisten untuk aksesibilitas */
+  .focus-ring {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background;
+  }
+
+  /* Animasi halus untuk card hover */
+  .card-hover {
+    @apply transition-all duration-200 hover:shadow-md hover:-translate-y-0.5;
+  }
+
+  /* Gradient text untuk angka penting */
+  .text-gradient-primary {
+    background: linear-gradient(135deg, var(--primary), color-mix(in oklch, var(--primary) 70%, var(--chart-2)));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  /* Shimmer untuk skeleton yang lebih halus */
+  .shimmer {
+    background: linear-gradient(90deg, var(--secondary) 25%, color-mix(in oklch, var(--secondary) 50%, var(--background)) 50%, var(--secondary) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+  @keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  /* Number ticker animation */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
   }
 }
 

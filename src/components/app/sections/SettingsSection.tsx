@@ -12,6 +12,7 @@ import { useAppStore } from '@/lib/store'
 import { toast } from 'sonner'
 import { Database, Type, Wallet, Tags, Sun, Moon, ShieldCheck } from 'lucide-react'
 import { useTheme } from 'next-themes'
+import { BackupRestore } from '@/components/app/BackupRestore'
 
 export function SettingsSection() {
   const qc = useQueryClient()
@@ -115,13 +116,15 @@ export function SettingsSection() {
             <Button variant="outline" onClick={() => setSection('categories')} className="h-11">Buka Manajemen Kategori</Button>
           </Card>
 
-          {/* Database */}
-          <Card className="p-5">
-            <h2 className="font-bold text-lg mb-1 flex items-center gap-2"><Database className="w-5 h-5 text-primary" /> Database</h2>
-            <p className="text-xs text-muted-foreground mb-3">Data tersimpan di cloud (Turso), bisa diakses dari semua device</p>
-            <div className="rounded-lg bg-secondary/60 p-3 text-xs font-mono text-muted-foreground break-all">
-              {process.env.NEXT_PUBLIC_TURSO_URL ?? 'libsql://ppob-algojogacorbgt.aws-ap-northeast-1.turso.io'}
-            </div>
+          {/* Database — Backup & Restore */}
+          <BackupRestore />
+
+          {/* Info koneksi DB */}
+          <Card className="p-4 bg-secondary/30">
+            <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+              <Database className="w-3.5 h-3.5" />
+              Koneksi: <code className="font-mono text-[10px] break-all">{process.env.NEXT_PUBLIC_TURSO_URL ?? 'libsql://ppob-algojogacorbgt.aws-ap-northeast-1.turso.io'}</code>
+            </p>
           </Card>
 
           {/* Keamanan */}

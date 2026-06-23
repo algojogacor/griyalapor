@@ -328,3 +328,54 @@ Stage Summary:
 - Chart width(0) warning masih muncul 2x saat mount Reports (cosmetic, recharts known issue, chart render OK) — low priority
 - SW hanya register di production — saat deploy akan aktif otomatis
 - Bisa tambah: search pelanggan by name di Transactions (saat ini filter client-side sudah include customer), export per pelanggan, recurring expenses, data backup/restore JSON, iOS install instructions
+
+---
+Task ID: 12
+Agent: main (orchestrator) — cron review round
+Task: Data Backup/Restore JSON, Search by amount range, iOS install instructions, styling polish, full QA
+
+Work Log:
+- [BUGFIX] Backup API validation: fix `data.categories` check — API sekarang accept baik full backup envelope ({app,version,data:{...}}) maupun bare {categories,...}. Sebelumnya restore selalu gagal "Format backup tidak valid" karena component kirim full envelope tapi API expect bare. Sekarang auto-detect via `envelope?.data?.categories ? envelope.data : envelope`.
+- [FEATURE] Data Backup/Restore JSON (src/components/app/BackupRestore.tsx + /api/backup):
+  - GET /api/backup — export semua data (categories, transactions, expenses, settings) sebagai JSON dengan metadata (app, version, exported_at, counts). Filename otomatis `griyalapor-backup-YYYY-MM-DD.json`.
+  - POST /api/backup — restore dengan 2 mode: "merge" (aman, skip duplikat by ID, data lama tetap) atau "replace" (hapus semua data lama lalu impor). Konfirmasi dialog dengan radio button pilih mode, warning destructive untuk replace.
+  - UI di SettingsSection: card "Database" dengan 2 section — Backup (unduh JSON) dan Restore (pilih file JSON → preview counts → konfirmasi mode → restore). Invalidate semua query setelah restore agar UI refresh.
+  - Verifikasi: backup 5.2KB JSON (18 kategori, 5 transaksi, 1 pengeluaran, 3 settings) ✓; restore merge mode → 24 skipped (sudah ada by ID), 3 settings upserted ✓
+- [FEATURE] Search transactions by amount range (TransactionsSection):
+  - Toggle "Filter Nominal" (icon SlidersHorizontal) — collapsible panel dengan min/max RupiahInput.
+  - Filter client-side berdasarkan `total` (pendapatan bersih). Indikator dot primary saat filter aktif.
+  - Tombol Reset untuk clear min/max. Counter "X dari Y transaksi" saat ada filter aktif.
+  - Deskripsi dinamis: "Menampilkan transaksi dengan bersih Rp50.000 – tanpa batas".
+  - Verifikasi: min 50000 → 2 dari 5 transaksi tampil ✓; reset → 5 transaksi kembali ✓
+- [FEATURE] iOS Safari install instructions (src/components/app/IosInstallInstructions.tsx):
+  - Card instruksi 3-langkah (Share → Add to Home Screen → Tambah) dengan icon inline.
+  - Auto-deteksi iOS Safari (bukan standalone = belum di-install) via userAgent + matchMedia. Dismissable (localStorage `gl-ios-install-dismissed`).
+  - Dipasang di AppShell, hanya render di section Dashboard. Tidak tampil di non-iOS atau saat sudah di-install.
+- [STYLING] Polish visual:
+  - globals.css: tambah utilities `.focus-ring`, `.card-hover`, `.text-gradient-primary`, `.shimmer` (skeleton animation), `.tabular-nums`. Scrollbar thumb hover state.
+  - Dashboard hero card: shadow-lg (dari shadow-md), blur glow orb decorative, backdrop-blur pada icon container & buttons, drop-shadow pada angka utama, relative positioning untuk layering.
+  - StatCard: highlight card dapat blur glow orb decorative + shadow-sm, content wrapped relative.
+  - Transaction list rows: border transparent → hover border-border/50 + shadow-sm, category avatar shadow-sm, customer name sebagai pill badge (bg-primary/10 text-primary icon User), amount text-lg font-bold, edit/delete buttons dengan hover bg (primary/10, destructive/10) + rounded-lg.
+- [QA FIX] Dialog accessibility: DialogContent di dialog.tsx sekarang default `aria-describedby={undefined}` — suppress Radix warning "Missing Description" globally tanpa perlu pass prop manual di setiap dialog.
+
+VERIFIKASI agent-browser:
+- Dashboard render ✓ (hero gradient + glow, statcards, akses cepat dengan Kelola, top customers)
+- Transactions: Filter Nominal toggle ✓, min 50000 → 2/5 rows ✓, reset → 5 rows ✓, customer name pill badge tampil ✓
+- Settings: Backup Data + Restore Data section ✓, Unduh Backup JSON button ✓
+- Backup API: GET 200 (5.2KB JSON, 18 cat/5 txn/1 exp/3 set) ✓; POST merge → 24 skipped + 3 settings upserted ✓
+- Lint PASS ✓, no dev log errors ✓
+
+Stage Summary:
+- 3 fitur baru: Backup/Restore JSON (2 mode aman & berbahaya), Search by amount range (collapsible filter), iOS Safari install instructions (auto-detect).
+- Styling polish: hero card glow + backdrop-blur, statcard decorative orbs, transaction rows dengan customer pill badge + hover shadow, global utilities (focus-ring, card-hover, shimmer, gradient-text).
+- Bug fix: Backup API validation sekarang accept full envelope & bare object.
+- Accessibility: Dialog warning suppressed globally via dialog.tsx default aria-describedby.
+
+## Status Proyek
+- STABIL & fitur makin lengkap. Backup/restore keamanan data, filter nominal untuk tracking presisi, iOS install untuk aksebilitas mobile Apple. Lint PASS, QA terverifikasi.
+
+## Risiko / Saran next
+- iOS install card hanya tampil di iOS Safari asli (agent-browser tidak simulate iOS, jadi tidak terlihat di QA desktop — expected).
+- Backup replace mode berbahaya — sudah ada konfirmasi dialog dengan warning, tapi bisa tambah double-confirm (ketik "HAPUS") kalau mau ekstra aman.
+- Bisa tambah: recurring expenses (pengeluaran tetap bulanan auto-generate), export laporan per pelanggan, notifikasi push untuk tutup buku harian, multi-currency.
+- Chart width(0) warning masih ada 2x saat mount Reports (cosmetic, recharts known issue).
