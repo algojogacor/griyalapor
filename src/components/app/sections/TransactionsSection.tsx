@@ -11,7 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
-import { formatRupiah, formatShortDate, todayISO, parseRupiahInput } from '@/lib/format'
+import { RupiahInput } from '@/components/app/RupiahInput'
+import { formatRupiah, formatLongDate, todayISO, parseRupiahInput } from '@/lib/format'
 import { getCategoryColor, getCategoryInitial } from '@/lib/category-colors'
 import { toast } from 'sonner'
 import { Plus, Trash2, Search, ReceiptText, Pencil } from 'lucide-react'
@@ -134,10 +135,9 @@ export function TransactionsSection() {
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="fee" className="text-sm font-medium">Fee per Pelanggan (Rp)</Label>
-                <Input
-                  id="fee" inputMode="numeric" value={fee}
-                  onChange={(e) => setFee(formatNum(e.target.value))}
-                  placeholder="3000" className="h-14 text-2xl font-bold text-center tabular-nums"
+                <RupiahInput
+                  id="fee" value={fee} onChange={setFee}
+                  placeholder="3.000" className="h-14 text-2xl font-bold text-center tabular-nums"
                 />
                 <p className="text-xs text-muted-foreground">Biaya admin. Otomatis dari kategori</p>
               </div>
@@ -145,10 +145,9 @@ export function TransactionsSection() {
 
             <div className="space-y-1.5">
               <Label htmlFor="bill" className="text-sm font-medium">Nominal Tagihan per Pelanggan (opsional)</Label>
-              <Input
-                id="bill" inputMode="numeric" value={bill}
-                onChange={(e) => setBill(formatNum(e.target.value))}
-                placeholder="contoh: 200000" className="h-12 text-lg font-semibold text-center tabular-nums"
+              <RupiahInput
+                id="bill" value={bill} onChange={setBill}
+                placeholder="200.000" className="h-12 text-lg font-semibold text-center tabular-nums"
               />
               <p className="text-xs text-muted-foreground">Isi untuk menghitung omzet/kotor (uang pembeli). Boleh dikosongkan</p>
             </div>
@@ -251,44 +250,71 @@ function TransactionList() {
         </div>
       ) : (
         <>
-          <div className="space-y-1.5 max-h-[28rem] overflow-y-auto scroll-thin pr-1">
-            {filtered.map((t) => {
-              const omzet = t.qty * (t.bill_per_unit + t.fee_per_unit)
-              return (
-                <div key={t.id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-secondary/60 transition-colors group">
-                  <div className={cn('w-11 h-11 rounded-xl flex flex-col items-center justify-center shrink-0 font-bold', getCategoryColor(t.category_group).bg, getCategoryColor(t.category_group).text)}>
-                    <span className="text-[10px] leading-none opacity-70">{t.qty}x</span>
-                    <span className="text-xs leading-tight">{getCategoryInitial(t.category_name)}</span>
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="font-medium truncate">{t.category_name}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {formatShortDate(t.date)} · {t.qty} × {formatRupiah(t.fee_per_unit)}
-                      {t.bill_per_unit > 0 ? ` (tagihan ${formatRupiah(t.bill_per_unit)})` : ''}
-                      {t.note ? ` · ${t.note}` : ''}
+          <div className="space-y-3 max-h-[28rem] overflow-y-auto scroll-thin pr-1">
+            {(() => {
+              // Group by date (transaksi sudah sorted date DESC dari API)
+              const groups: { date: string; items: Txn[] }[] = []
+              for (const t of filtered) {
+                const last = groups[groups.length - 1]
+                if (last && last.date === t.date) last.items.push(t)
+                else groups.push({ date: t.date, items: [t] })
+              }
+              const todayStr = todayISO()
+              return groups.map((g) => {
+                const dayTotal = g.items.reduce((s, t) => s + t.total, 0)
+                const isToday = g.date === todayStr
+                return (
+                  <div key={g.date}>
+                    <div className="flex items-center justify-between px-1 mb-1.5 sticky top-0 bg-card/95 backdrop-blur py-1 z-10">
+                      <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+                        {isToday && <span className="w-1.5 h-1.5 rounded-full bg-primary" />}
+                        {formatLongDate(g.date)}
+                      </span>
+                      <span className="text-xs font-semibold tabular-nums text-muted-foreground">{formatRupiah(dayTotal)}</span>
                     </div>
-                    {t.bill_per_unit > 0 && (
-                      <div className="text-[11px] text-muted-foreground/80 mt-0.5">Omzet {formatRupiah(omzet)}</div>
-                    )}
+                    <div className="space-y-1.5">
+                      {g.items.map((t) => {
+                        const omzet = t.qty * (t.bill_per_unit + t.fee_per_unit)
+                        return (
+                          <div key={t.id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-secondary/60 transition-colors group">
+                            <div className={cn('w-11 h-11 rounded-xl flex flex-col items-center justify-center shrink-0 font-bold', getCategoryColor(t.category_group).bg, getCategoryColor(t.category_group).text)}>
+                              <span className="text-[10px] leading-none opacity-70">{t.qty}x</span>
+                              <span className="text-xs leading-tight">{getCategoryInitial(t.category_name)}</span>
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="font-medium truncate">{t.category_name}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {t.qty} × {formatRupiah(t.fee_per_unit)}
+                                {t.bill_per_unit > 0 ? ` (tagihan ${formatRupiah(t.bill_per_unit)})` : ''}
+                                {t.note ? ` · ${t.note}` : ''}
+                              </div>
+                              {t.bill_per_unit > 0 && (
+                                <div className="text-[11px] text-muted-foreground/80 mt-0.5">Omzet {formatRupiah(omzet)}</div>
+                              )}
+                            </div>
+                            <div className="font-semibold text-success tabular-nums shrink-0">+{formatRupiah(t.total)}</div>
+                            <button
+                              onClick={() => setEditTxn(t)}
+                              className="opacity-0 group-hover:opacity-100 transition-opacity p-2 text-muted-foreground hover:text-primary"
+                              aria-label="Edit transaksi"
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => setDeleteId(t.id)}
+                              className="opacity-0 group-hover:opacity-100 transition-opacity p-2 text-muted-foreground hover:text-destructive"
+                              aria-label="Hapus transaksi"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        )
+                      })}
+                    </div>
                   </div>
-                  <div className="font-semibold text-success tabular-nums shrink-0">+{formatRupiah(t.total)}</div>
-                  <button
-                    onClick={() => setEditTxn(t)}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity p-2 text-muted-foreground hover:text-primary"
-                    aria-label="Edit transaksi"
-                  >
-                    <Pencil className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => setDeleteId(t.id)}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity p-2 text-muted-foreground hover:text-destructive"
-                    aria-label="Hapus transaksi"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              )
-            })}
+                )
+              })
+            })()}
           </div>
           <div className="mt-3 pt-3 border-t space-y-1">
             <div className="flex items-center justify-between font-semibold">
@@ -392,12 +418,12 @@ function EditTransactionDialog({ txn, onClose, onSaved }: { txn: Txn; onClose: (
             </div>
             <div className="space-y-1.5">
               <Label className="font-medium">Fee/Pelanggan</Label>
-              <Input inputMode="numeric" value={fee} onChange={(e) => setFee(e.target.value.replace(/[^\d]/g, ''))} className="h-14 text-2xl font-bold text-center tabular-nums" />
+              <RupiahInput value={fee} onChange={setFee} className="h-14 text-2xl font-bold text-center tabular-nums" />
             </div>
           </div>
           <div className="space-y-1.5">
             <Label className="font-medium">Nominal Tagihan/Pelanggan (opsional)</Label>
-            <Input inputMode="numeric" value={bill} onChange={(e) => setBill(e.target.value.replace(/[^\d]/g, ''))} className="h-12 text-lg font-semibold text-center tabular-nums" />
+            <RupiahInput value={bill} onChange={setBill} className="h-12 text-lg font-semibold text-center tabular-nums" />
           </div>
           <div className="rounded-xl bg-primary/10 p-3 space-y-1">
             <div className="flex items-center justify-between text-sm">

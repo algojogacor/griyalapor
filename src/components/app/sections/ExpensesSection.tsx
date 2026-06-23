@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { formatRupiah, formatShortDate, todayISO, parseRupiahInput } from '@/lib/format'
+import { RupiahInput } from '@/components/app/RupiahInput'
 import { toast } from 'sonner'
 import { Plus, Trash2, TrendingDown, Receipt } from 'lucide-react'
 
@@ -80,10 +81,9 @@ export function ExpensesSection() {
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="eamount" className="text-sm font-medium">Jumlah (Rp)</Label>
-                <Input
-                  id="eamount" inputMode="numeric" value={amount}
-                  onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ''))}
-                  placeholder="50000" className="h-14 text-2xl font-bold text-center tabular-nums"
+                <RupiahInput
+                  id="eamount" value={amount} onChange={setAmount}
+                  placeholder="50.000" className="h-14 text-2xl font-bold text-center tabular-nums"
                 />
               </div>
             </div>

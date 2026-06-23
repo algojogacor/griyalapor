@@ -20,6 +20,7 @@ import {
 import {
   formatRupiah,
   formatMonthLabel,
+  formatDateISO,
   thisMonthRange,
 } from '@/lib/format'
 import { toast } from 'sonner'
@@ -160,13 +161,55 @@ export function ReportsSection() {
   const maxCat = breakdown.length ? Math.max(...breakdown.map((b) => b.admin)) : 0
   const monthlyTrend = summary?.monthlyTrend ?? []
 
-  function setRangePreset(kind: 'month' | 'week') {
+  function setRangePreset(kind: 'today' | '7d' | '30d' | 'month' | 'lastMonth' | 'week') {
+    const now = new Date()
+    if (kind === 'today') {
+      const d = formatDateISO(now)
+      setFrom(d); setTo(d)
+      return
+    }
+    if (kind === '7d') {
+      const start = new Date(now); start.setDate(now.getDate() - 6)
+      setFrom(formatDateISO(start)); setTo(formatDateISO(now)); return
+    }
+    if (kind === '30d') {
+      const start = new Date(now); start.setDate(now.getDate() - 29)
+      setFrom(formatDateISO(start)); setTo(formatDateISO(now)); return
+    }
     if (kind === 'month') {
-      const r = thisMonthRange()
-      setFrom(r.from)
-      setTo(r.to)
+      const r = thisMonthRange(); setFrom(r.from); setTo(r.to); return
+    }
+    if (kind === 'lastMonth') {
+      const d = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+      setFrom(formatDateISO(new Date(d.getFullYear(), d.getMonth(), 1)))
+      setTo(formatDateISO(new Date(d.getFullYear(), d.getMonth() + 1, 0)))
+      return
+    }
+    if (kind === 'week') {
+      const day = now.getDay()
+      const diffToMonday = day === 0 ? -6 : 1 - day
+      const monday = new Date(now); monday.setDate(now.getDate() + diffToMonday)
+      const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6)
+      setFrom(formatDateISO(monday)); setTo(formatDateISO(sunday)); return
     }
   }
+
+  // Deteksi preset aktif untuk highlight tombol
+  const activePreset: string | null = (() => {
+    const now = new Date()
+    const today = formatDateISO(now)
+    if (from === today && to === today) return 'today'
+    const d7 = new Date(now); d7.setDate(now.getDate() - 6)
+    if (from === formatDateISO(d7) && to === today) return '7d'
+    const d30 = new Date(now); d30.setDate(now.getDate() - 29)
+    if (from === formatDateISO(d30) && to === today) return '30d'
+    const mr = thisMonthRange()
+    if (from === mr.from && to === mr.to) return 'month'
+    const lm = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+    if (from === formatDateISO(new Date(lm.getFullYear(), lm.getMonth(), 1)) &&
+        to === formatDateISO(new Date(lm.getFullYear(), lm.getMonth() + 1, 0))) return 'lastMonth'
+    return null
+  })()
 
   function exportCSV() {
     const params = new URLSearchParams({ from, to })
@@ -252,13 +295,31 @@ export function ReportsSection() {
               className="h-12"
             />
           </div>
-          <Button
-            variant="outline"
-            onClick={() => setRangePreset('month')}
-            className="h-12 px-4 shrink-0"
-          >
-            Bulan Ini
-          </Button>
+        </div>
+
+        {/* Preset rentang cepat */}
+        <div className="flex flex-wrap gap-2 mt-3">
+          {([
+            { id: 'today', label: 'Hari Ini' },
+            { id: '7d', label: '7 Hari' },
+            { id: '30d', label: '30 Hari' },
+            { id: 'week', label: 'Minggu Ini' },
+            { id: 'month', label: 'Bulan Ini' },
+            { id: 'lastMonth', label: 'Bulan Lalu' },
+          ] as const).map((p) => (
+            <button
+              key={p.id}
+              onClick={() => setRangePreset(p.id)}
+              className={cn(
+                'h-10 px-3.5 rounded-lg text-sm font-medium border transition-colors',
+                activePreset === p.id
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'bg-card hover:bg-secondary text-foreground/80',
+              )}
+            >
+              {p.label}
+            </button>
+          ))}
         </div>
 
         <div className="flex flex-wrap gap-2 mt-3">

@@ -192,3 +192,39 @@ Stage Summary:
 - Quick-add saat ini tidak ada input nominal tagihan di tampilan awal (ada tapi opsional). Bisa default tampilkan bill field jika kategori biasanya punya tagihan (PLN, PDAM).
 - Bisa tambah: recurring expenses (pengeluaran tetap bulanan), filter kategori di laporan, export per kategori, PWA install prompt UI, data backup/restore.
 - Transaksi lama (sebelum kolom bill) punya bill=0 → omzet=bersih. Expected.
+
+---
+Task ID: 9
+Agent: main (orchestrator) — cron review
+Task: QA pass + fitur baru (RupiahInput, date presets, PWA install prompt, Tutup Buku nudge) + styling polish (grouped transactions, hover lift, hero pattern)
+
+Work Log:
+- QA awal: dashboard, laporan, transaksi semua stabil. Tidak ada bug runtime. Lint PASS.
+- [FEATURE] RupiahInput reusable (src/components/app/RupiahInput.tsx): input angka rupiah yang menampilkan pemisah ribuan SAAT mengetik (1500 → "1.500"). Value/onChange tetap digit mentah. Prefix "Rp" opsional di dalam input. Diterapkan di: form Transaksi (fee + bill), EditTransactionDialog (fee + bill), QuickAddDialog (fee + bill), ExpensesSection (amount). Besar manfaat UX untuk lansia — angka besar jelas terbaca.
+- [FEATURE] Date range presets di Laporan: 6 tombol cepat (Hari Ini, 7 Hari, 30 Hari, Minggu Ini, Bulan Ini, Bulan Lalu) dengan highlight preset aktif. setRangePreset diperluas dengan today/7d/30d/week/lastMonth. activePreset auto-deteksi untuk highlight tombol yang cocok.
+- [FEATURE] PWA Install Prompt (src/components/app/InstallPrompt.tsx): banner dismissible "Pasang GriyaLapor" yang muncul saat beforeinstallprompt event fire. Tombol "Pasang" (trigger install) + "Nanti saja" (dismiss + localStorage). Animate slide-in. Dipasang di AppShell.
+- [FEATURE] Dashboard "Tutup Buku" nudge: card amber yang muncul kalau today.count === 0 — "Belum ada catatan hari ini, Yuk catat transaksi hari ini sebelum lupa" + tombol Catat. Mengingatkan kakek untuk tutup buku harian.
+- [STYLING] Transactions grouped by date: list transaksi sekarang dikelompokkan per tanggal dengan header sticky (formatLongDate "Selasa, 23 Juni 2026") + total per hari. Dot indicator hijau untuk hari ini. Layout ledger-style lebih mudah dipindai.
+- [STYLING] Card hover lift: quick-add buttons & quick links dapat hover:-translate-y-0.5 + hover:shadow-md untuk feedback tactile.
+- [STYLING] Hero card decorative pattern: overlay radial-gradient dot pattern (opacity 10%) di hero card pendapatan — subtle visual interest tanpa mengganggu readability.
+
+VERIFIKASI agent-browser:
+- Form Transaksi: pilih PLN Pascabayar → fee auto "3.000" (formatted), ketik bill 200000 → tampil "200.000" ✓
+- Laporan: 6 preset tombol tampil, klik "7 Hari" → Dari 2026-06-17 Sampai 2026-06-23 ✓
+- Transaksi: list grouped "Selasa, 23 Juni 2026" + total per hari ✓
+- Dashboard: Akses Cepat + breakdown + hero pattern render ✓
+- bun run lint PASS ✓
+
+Stage Summary:
+- 4 fitur baru: RupiahInput (format ribuan real-time), date presets Laporan (6 rentang cepat), PWA Install Prompt, Tutup Buku nudge.
+- Styling polish: transactions grouped by date (ledger style), card hover lift, hero decorative pattern.
+- UX lansia meningkat signifikan: angka rupiah jelas terbaca saat input, rentang tanggal 1-klik, pengingat catat harian, install ke HP mudah.
+
+## Status Proyek
+- STABIL & lebih kaya fitur. UX semakin ramah lansia. Lint PASS, semua terverifikasi.
+
+## Risiko / Saran next
+- RupiahInput saat ini tidak menyimpan posisi kursor di tengah (selalu di akhir) — cukup untuk input angka, tapi kalau ada edit di tengah bisa awkward. Low priority.
+- Install Prompt hanya muncul di browser yang support beforeinstallprompt (Chrome/Edge/Android). Safari iOS butuh instruksi manual "Add to Home Screen" — bisa tambah info card khusus iOS.
+- Bisa tambah: recurring expenses, filter kategori di laporan, data backup/restore JSON, search transaksi by amount range, dark mode refinement.
+- Mobile bottom-nav 6-slot saat expenses on masih agak rapat — pertimbangkan "More" menu.

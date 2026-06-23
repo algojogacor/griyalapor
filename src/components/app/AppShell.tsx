@@ -16,6 +16,7 @@ import { ReportsSection } from './sections/ReportsSection'
 import { ImportSection } from './sections/ImportSection'
 import { SettingsSection } from './sections/SettingsSection'
 import { ExpensesSection } from './sections/ExpensesSection'
+import { InstallPrompt } from './InstallPrompt'
 import { AgentChat } from './agent/AgentChat'
 
 const NAV_BASE: { id: SectionId; label: string; icon: typeof Home }[] = [
@@ -145,6 +146,7 @@ export function AppShell() {
 
       {/* Floating AI button + panel */}
       <AgentChat open={agentOpen} />
+      <InstallPrompt />
     </div>
   )
 }

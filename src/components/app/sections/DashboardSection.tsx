@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { RupiahInput } from '@/components/app/RupiahInput'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAppStore } from '@/lib/store'
 import { toast } from 'sonner'
@@ -110,7 +111,8 @@ export function DashboardSection() {
       </div>
 
       {/* Hero card hari ini */}
-      <Card className="p-5 md:p-7 bg-gradient-to-br from-primary to-primary/80 text-primary-foreground border-0 shadow-md">
+      <Card className="relative overflow-hidden p-5 md:p-7 bg-gradient-to-br from-primary to-primary/80 text-primary-foreground border-0 shadow-md">
+        <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle at 20% 30%, white 1px, transparent 1px), radial-gradient(circle at 70% 60%, white 1px, transparent 1px)', backgroundSize: '48px 48px, 64px 64px' }} />
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-primary-foreground/80 text-sm font-medium flex items-center gap-1.5">
@@ -150,6 +152,30 @@ export function DashboardSection() {
         </div>
       </Card>
 
+      {/* Nudge "Tutup Buku" — muncul kalau belum ada transaksi hari ini */}
+      {!isLoading && data && data.today.count === 0 && (
+        <Card className="p-4 border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 flex items-center justify-center shrink-0">
+              <CalendarDays className="w-5 h-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold text-sm text-amber-900 dark:text-amber-100">Belum ada catatan hari ini</p>
+              <p className="text-xs text-amber-800/80 dark:text-amber-200/80 mt-0.5">
+                Yuk catat transaksi hari ini sebelum lupa. Klik "Catat Transaksi" atau pakai Akses Cepat di bawah.
+              </p>
+            </div>
+            <Button
+              onClick={() => setSection('transactions')}
+              size="sm"
+              className="bg-amber-600 hover:bg-amber-700 text-white h-9 shrink-0"
+            >
+              <Plus className="w-4 h-4" /> Catat
+            </Button>
+          </div>
+        </Card>
+      )}
+
       {/* Stat cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <StatCard label="Hari Ini" value={data?.today.admin} omzet={data?.today.omzet} count={data?.today.count} loading={isLoading} highlight />
@@ -180,7 +206,7 @@ export function DashboardSection() {
                 <button
                   key={cat.id}
                   onClick={() => setQuickCat(cat)}
-                  className="group flex items-center gap-2.5 p-3 rounded-xl border bg-card hover:border-primary/40 hover:shadow-sm transition-all text-left active:scale-[0.98]"
+                  className="group flex items-center gap-2.5 p-3 rounded-xl border bg-card hover:border-primary/40 hover:shadow-md hover:-translate-y-0.5 transition-all text-left active:scale-[0.98]"
                 >
                   <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center font-bold text-xs shrink-0', color.bg, color.text)}>
                     {getCategoryInitial(cat.name)}
@@ -372,11 +398,11 @@ function QuickAddDialog({ category, onClose, onSaved }: { category: Category; on
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label className="font-medium text-xs">Fee/Pelanggan</Label>
-              <Input inputMode="numeric" value={fee} onChange={(e) => setFee(e.target.value.replace(/[^\d]/g, ''))} className="h-12 text-lg font-bold text-center tabular-nums" />
+              <RupiahInput value={fee} onChange={setFee} className="h-12 text-lg font-bold text-center tabular-nums" />
             </div>
             <div className="space-y-1.5">
               <Label className="font-medium text-xs">Tagihan/Pelanggan (opsional)</Label>
-              <Input inputMode="numeric" value={bill} onChange={(e) => setBill(e.target.value.replace(/[^\d]/g, ''))} placeholder="0" className="h-12 text-lg font-semibold text-center tabular-nums" />
+              <RupiahInput value={bill} onChange={setBill} placeholder="0" className="h-12 text-lg font-semibold text-center tabular-nums" />
             </div>
           </div>
           <div className="rounded-xl bg-primary/10 p-3 flex items-center justify-between">
@@ -422,7 +448,7 @@ function ExpenseMini({ label, value, loading }: { label: string; value?: number;
 function QuickLink({ title, desc, icon, onClick }: { title: string; desc: string; icon: 'upload' | 'chart'; onClick: () => void }) {
   return (
     <button onClick={onClick} className="text-left">
-      <Card className="p-4 hover:border-primary/40 hover:shadow-sm transition-all h-full">
+      <Card className="p-4 hover:border-primary/40 hover:shadow-md hover:-translate-y-0.5 transition-all h-full">
         <div className="flex items-start gap-3">
           <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
             {icon === 'upload' ? (
