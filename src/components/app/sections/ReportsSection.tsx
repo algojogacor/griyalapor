@@ -114,10 +114,12 @@ export function ReportsSection() {
   })
 
   // Transaksi pada rentang tanggal yg dipilih
+  // Reports butuh SEMUA transaksi dalam range untuk breakdown akurat, jadi limit=0 (return all)
   const rangeParams = useMemo(() => {
     const p = new URLSearchParams()
     p.set('from', from)
     p.set('to', to)
+    p.set('limit', '0') // 0 = return all (untuk laporan, bukan UI list)
     return p.toString()
   }, [from, to])
 

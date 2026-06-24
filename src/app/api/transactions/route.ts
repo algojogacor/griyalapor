@@ -4,14 +4,18 @@ import { json, errorJson } from '@/lib/http'
 export const dynamic = 'force-dynamic'
 
 // GET /api/transactions?from=YYYY-MM-DD&to=YYYY-MM-DD&category_id=&limit=&offset=
-// Default: return all transactions matching filter (for backward compat with frontend yang paginate client-side)
-// Jika limit=0 (default), kembalikan semua. Frontend TransactionsSection sudah paginate client-side via visibleCount.
+// Server-side pagination untuk performance jangka panjang (10+ tahun).
+// - Default limit=500 (cukup untuk most views, tidak berat di network)
+// - Jika limit=0 dan offset=0 → kembalikan SEMUA (untuk export CSV, backup, AI agent)
+// - Response: { transactions, total, limit, offset, hasMore }
 export async function GET(req: Request) {
   const url = new URL(req.url)
   const from = url.searchParams.get('from')
   const to = url.searchParams.get('to')
   const categoryId = url.searchParams.get('category_id')
-  const limit = Number(url.searchParams.get('limit') || 0) || 0
+  // limit=0 means "return all" (untuk export/backup). Default 500 untuk UI.
+  const rawLimit = url.searchParams.get('limit')
+  const limit = rawLimit === null ? 500 : (Number(rawLimit) || 0)
   const offset = Number(url.searchParams.get('offset') || 0) || 0
 
   const conditions: string[] = []
@@ -34,20 +38,38 @@ export async function GET(req: Request) {
                     c.name as category_name, c.group_name as category_group
              FROM transactions t JOIN categories c ON c.id = t.category_id
              ${where} ORDER BY t.date DESC, t.id DESC`
+  const limitArgs: (string | number)[] = [...args]
   if (limit > 0) {
     sql += ' LIMIT ? OFFSET ?'
-    args.push(limit, offset)
+    limitArgs.push(limit + 1, offset) // fetch limit+1 to check hasMore
   }
-  const res = await db.execute({ sql, args })
+  const res = await db.execute({ sql, args: limitArgs })
 
-  // Total count untuk pagination
+  // Total count untuk pagination info
   const countRes = await db.execute({
     sql: `SELECT COUNT(*) as c FROM transactions t ${where}`,
     args,
   })
   const total = Number((countRes.rows[0] as { c: number }).c)
 
-  return json({ transactions: res.rows, total })
+  // Determine hasMore: jika kita fetch limit+1 dan dapat lebih dari limit, ada lebih
+  let hasMore = false
+  let rows = res.rows
+  if (limit > 0 && rows.length > limit) {
+    hasMore = true
+    rows = rows.slice(0, limit) // buang extra row
+  } else if (limit > 0 && rows.length === limit) {
+    // Edge case: exactly limit rows — cek apakah masih ada lagi
+    hasMore = offset + limit < total
+  }
+
+  return json({
+    transactions: rows,
+    total,
+    limit,
+    offset,
+    hasMore,
+  })
 }
 
 // POST /api/transactions — tambah transaksi

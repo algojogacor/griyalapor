@@ -264,22 +264,67 @@ function TransactionList() {
   const [filterRecorder, setFilterRecorder] = useState<string>('')
   const qc = useQueryClient()
 
-  // Pagination: default limit 200 transaksi per load, "Muat lagi" untuk load lebih
-  const PAGE_SIZE = 200
-  const [loadMoreCount, setLoadMoreCount] = useState(0) // 0 = initial PAGE_SIZE, increment for more
-  const visibleCount = PAGE_SIZE * (loadMoreCount + 1)
+  // Server-side pagination: API default limit=500, "Muat Lagi" fetch next 500
+  // Frontend juga paginate client-side (visibleCount) untuk smooth rendering.
+  // Jadi: API kirim 500, kita tampilkan 200 dulu, "Muat Lagi" tampilkan 200+200=400,
+  // kalau perlu lebih dari 500, fetch page 2 (offset=500) dari server.
+  const CLIENT_PAGE_SIZE = 200
+  const SERVER_PAGE_SIZE = 500
+  const [clientPage, setClientPage] = useState(0) // untuk client-side slice
+  const [serverPages, setServerPages] = useState<{ transactions: Txn[]; total: number }[]>([])
+  const [fetchingMore, setFetchingMore] = useState(false)
 
   const params = new URLSearchParams()
   if (from) params.set('from', from)
   if (to) params.set('to', to)
   if (search) params.set('q', search)
 
+  // Initial fetch (page 1 dari server)
   const { data, isLoading } = useQuery({
-    queryKey: ['transactions', from, to],
+    queryKey: ['transactions', from, to, search],
     queryFn: () => fetch('/api/transactions?' + params.toString()).then((r) => r.json()),
   })
-  const txnsAll: Txn[] = data?.transactions ?? []
-  const totalCount: number = data?.total ?? txnsAll.length
+
+  // Reset serverPages saat data awal berubah
+  const dataKey = `${from}|${to}|${search}`
+  const prevDataKeyRef = useRef(dataKey)
+  if (prevDataKeyRef.current !== dataKey) {
+    prevDataKeyRef.current = dataKey
+    setServerPages([])
+    setClientPage(0)
+  }
+
+  // Sync serverPages dengan data awal
+  useEffect(() => {
+    if (data?.transactions) {
+      setServerPages([{ transactions: data.transactions, total: data.total }])
+      setClientPage(0)
+    }
+  }, [data])
+
+  // Gabungkan semua transaksi dari serverPages yang sudah di-fetch
+  const txnsAll: Txn[] = serverPages.flatMap((p) => p.transactions)
+  const totalCount: number = serverPages[0]?.total ?? data?.total ?? 0
+  const hasMoreServer: boolean = data?.hasMore ?? false
+  const serverOffset = txnsAll.length
+
+  // Fetch next server page
+  async function fetchMoreServer() {
+    if (fetchingMore || !hasMoreServer) return
+    setFetchingMore(true)
+    try {
+      const p = new URLSearchParams(params)
+      p.set('limit', String(SERVER_PAGE_SIZE))
+      p.set('offset', String(serverOffset))
+      const res = await fetch('/api/transactions?' + p.toString())
+      const json = await res.json()
+      setServerPages((prev) => [...prev, { transactions: json.transactions, total: json.total }])
+    } catch {
+      toast.error('Gagal memuat transaksi lainnya')
+    } finally {
+      setFetchingMore(false)
+    }
+  }
 
   // Client-side filter (search, amount, recorder)
   const minVal = parseRupiahInput(minAmount) || 0
@@ -299,15 +344,28 @@ function TransactionList() {
     return true
   })
 
-  // Paginate: hanya tampilkan visibleCount pertama (avoid render 10K+ DOM nodes)
+  // Client-side pagination: tampilkan CLIENT_PAGE_SIZE * (clientPage+1) dari filteredAll
+  const visibleCount = CLIENT_PAGE_SIZE * (clientPage + 1)
   const filtered = filteredAll.slice(0, visibleCount)
-  const hasMore = filteredAll.length > visibleCount
+  // hasMore = masih ada di client slice, ATAU masih ada di server yang belum di-fetch
+  const hasMoreClient = filteredAll.length > visibleCount
+  const hasMore = hasMoreClient || hasMoreServer
+
+  function loadMore() {
+    if (hasMoreClient) {
+      // Masih ada di client slice, tinggal tambah clientPage
+      setClientPage((p) => p + 1)
+    } else if (hasMoreServer) {
+      // Perlu fetch server page berikutnya
+      fetchMoreServer().then(() => setClientPage((p) => p + 1))
+    }
+  }
 
   const txns = filtered
 
   const hasAdvancedFilter = minVal > 0 || maxVal > 0
 
-  // Build daftar recorder unik dari SEMUA transaksi (bukan hanya yang tampil) supaya filter chip lengkap
+  // Build daftar recorder unik dari SEMUA transaksi yang sudah di-fetch
   const recorders = Array.from(new Set(txnsAll.map((t) => t.recorded_by).filter((x): x is string => !!x)))
 
   const deleteMutation = useMutation({
@@ -325,10 +383,11 @@ function TransactionList() {
     onError: () => toast.error('Gagal menghapus transaksi'),
   })
 
-  // Grand totals dari SEMUA transaksi yang ter-filter (bukan hanya yang tampil)
+  // Grand totals dari transaksi yang SUDAH di-load (bisa kurang dari total jika belum load semua)
   const grandAdmin = filteredAll.reduce((s, t) => s + t.total, 0)
   const grandOmzet = filteredAll.reduce((s, t) => s + t.total_paid, 0)
   const hasOmzet = filteredAll.some((t) => t.total_paid > 0)
+  const allLoaded = !hasMoreServer && !hasMoreClient // true jika semua transaksi sudah di-load
 
   return (
     <Card className="p-5">
@@ -541,26 +600,36 @@ function TransactionList() {
             <div className="mt-3 flex flex-col items-center gap-2">
               <Button
                 variant="outline"
-                onClick={() => setLoadMoreCount((c) => c + 1)}
+                onClick={loadMore}
+                disabled={fetchingMore}
                 className="h-11 px-6"
               >
-                Muat Lagi ({filteredAll.length - filtered.length} transaksi tersisa)
+                {fetchingMore ? (
+                  'Memuat...'
+                ) : (
+                  `Muat Lagi (${totalCount - filtered.length} transaksi tersisa)`
+                )}
               </Button>
               <p className="text-xs text-muted-foreground">
-                Menampilkan {filtered.length} dari {filteredAll.length} transaksi
+                Menampilkan {filtered.length} dari {totalCount} transaksi
               </p>
             </div>
           )}
           <div className="mt-3 pt-3 border-t space-y-1">
             <div className="flex items-center justify-between font-semibold">
-              <span>Total Pendapatan Bersih ({filteredAll.length} transaksi)</span>
+              <span>Total Pendapatan Bersih ({filteredAll.length} transaksi{!allLoaded && ' dimuat'})</span>
               <span className="tabular-nums text-primary text-lg">{formatRupiah(grandAdmin)}</span>
             </div>
             {hasOmzet && (
               <div className="flex items-center justify-between text-sm text-muted-foreground">
-                <span>Total Omzet (uang pembeli)</span>
+                <span>Total Omzet (uang pembeli){!allLoaded && ' (sebagian)'}</span>
                 <span className="tabular-nums font-medium">{formatRupiah(grandOmzet)}</span>
               </div>
+            )}
+            {!allLoaded && (
+              <p className="text-xs text-muted-foreground italic">
+                Total dihitung dari {filteredAll.length} transaksi yang sudah dimuat. Klik "Muat Lagi" untuk memuat sisanya.
+              </p>
             )}
           </div>
         </>
