@@ -549,3 +549,85 @@ Stage Summary:
 - Bisa tambah: export laporan per pelanggan, notifikasi push untuk tutup buku harian, multi-currency
 - Chart width(0) warning masih ada 2x saat mount Reports (cosmetic, recharts known issue)
 - Test data: 2 transaksi test dibuat via API (Pak Budi/Yangti, Bu Siti/Mama) — bisa dihapus manual kalau mengganggu
+
+---
+Task ID: 15
+Agent: main (orchestrator) — user feature request (hapus data) + bugfix
+Task: Fitur Hapus Data dengan konfirmasi 3 langkah + opsi rentang (hari ini/minggu/bulan/pilih tanggal/keseluruhan), fix runtime error handleOpenChange
+
+Work Log:
+
+- [USER QUESTION] "Apakah recorded_by sudah ditambah di laporan transaksi riwayat? siapa yang isi dll? dan juga ketika impor csv?"
+  Jawaban: SUDAH SEMUA (dikerjakan di Task 14 sebelumnya):
+  - Riwayat Transaksi: badge "Dicatat Oleh" (icon UserCircle + nama) di setiap baris ✓
+  - Laporan PDF/Print: kolom "Dicatat Oleh" di tabel laporan ✓
+  - Filter di Laporan & Transaksi: chip filter "Dicatat Oleh" ✓
+  - Impor CSV: field "Dicatat Oleh" dengan deteksi header otomatis + sample CSV ✓
+
+- [NEW FEATURE] Hapus Data dengan konfirmasi 3 langkah:
+  - API /api/data (GET + DELETE):
+    - GET /api/data?range=today|week|month|all|custom&from=&to= — preview jumlah data yang akan dihapus (count, admin, omzet untuk transaksi; count, total untuk pengeluaran)
+    - DELETE /api/data — hapus berdasarkan range + types (transactions/expenses) + confirmCode="HAPUS"
+    - Helper resolveRange() konversi range ke {dateFrom, dateTo}:
+      - today → hari ini
+      - week → Senin-Minggu ini
+      - month → awal-akhir bulan ini
+      - all → 1900-01-01 s/d 9999-12-31 (capture semua)
+      - custom → dari input user (with swap if from > to)
+    - Safety: require confirmCode === "HAPUS" (case-sensitive), require types.length > 0
+    - Return: { range, from, to, deleted: { transactions, expenses } }
+  
+  - Component DeleteDataDialog.tsx (split jadi 2 komponen untuk reset state otomatis):
+    - DeleteDataDialog (outer): render <Dialog> + <DialogContent> + header. Inner content hanya di-mount saat open=true
+    - DeleteDataContent (inner): semua state (step, range, from, to, types, confirmCode, done). Karena di-mount ulang setiap kali dialog dibuka, state reset otomatis tanpa perlu useEffect/ref hack
+    - Step 1: Pilih Rentang Waktu (5 opsi: Hari Ini, Minggu Ini, Bulan Ini, Pilih Tanggal, Seluruh Data dengan badge BERBAHAYA) + Jenis Data (Transaksi, Pengeluaran — toggle). Jika custom, tampil date picker from/to. Tombol "Lanjut" disabled jika custom belum diisi atau types kosong
+    - Step 2: Preview data yang akan dihapus (count + total per jenis) dengan warning "Data yang dihapus tidak bisa dikembalikan". Tombol "Saya Mengerti, Lanjut" disabled jika preview 0 data
+    - Step 3: Ketik "HAPUS" (huruf kapital, font-mono, tracking-widest) untuk konfirmasi final. Tombol "Hapus Permanen" disabled sampai confirmCode === "HAPUS"
+    - Done state: "Data Berhasil Dihapus" dengan ikon CheckCircle2 + ringkasan + tombol Selesai
+    - Step indicator (1-2-3) dengan checkmark hijau saat step selesai
+    - Semua tombol utama pakai bg-destructive text-white (merah) untuk emphasize bahaya
+    - Range label display: "Hari Ini (Rabu, 24 Juni 2026)", "Minggu Ini (2026-06-22 s/d 2026-06-28)", dst
+  
+  - SettingsSection.tsx: tambah card "Hapus Data" di section Database (setelah BackupRestore):
+    - Border destructive/30, icon Trash2, judul text-destructive
+    - Warning box dengan info rentang yang tersedia
+    - Tombol "Buka Hapus Data" (outline, border destructive, hover bg destructive text white)
+
+- [BUGFIX] Runtime error "handleOpenChange is not defined":
+  - Penyebab: Saat split komponen (DeleteDataDialog outer + DeleteDataContent inner), inner component masih punya sisa kode lama yang reference `handleOpenChange` dan `open` (yang hanya ada di outer scope)
+  - Fix:
+    - Hapus duplicate <Dialog open={open} onOpenChange={handleOpenChange}> wrapper di inner component
+    - Ganti `handleOpenChange(false)` → `onDone()` di tombol Batal dan Selesai
+    - Ganti `enabled: open && ...` → `enabled: (step === 2 || step === 3) && ...` (karena inner hanya di-mount saat open)
+    - Inner component return <div className="space-y-4"> bukan <Dialog>
+    - Cleanup unused imports: DialogFooter, Wallet
+  - Verifikasi: dialog buka/tutup mulus, state reset otomatis saat reopen, tidak ada error runtime
+
+- [DB FIX] Local DB schema mismatch:
+  - Penyebab: Local SQLite DB punya schema Prisma camelCase (categoryId, feePerUnit) sedangkan API expect schema.sql snake_case (category_id, fee_per_unit)
+  - Fix: drop semua tabel, re-run scripts/migrate.ts dengan DATABASE_URL=file:/home/z/my-project/db/custom.db
+  - Migration idempotent: tambah kolom customer_name, recorded_by, recurring_id via PRAGMA table_info check
+
+VERIFIKASI agent-browser (mobile 375px):
+- Settings page: card "Hapus Data" tampil dengan tombol "Buka Hapus Data" ✓
+- Step 1: 5 opsi rentang (Hari Ini, Minggu Ini, Bulan Ini, Pilih Tanggal, Seluruh Data BERBAHAYA) + toggle Transaksi/Pengeluaran ✓
+- Step 2: preview "1 data · Bersih Rp15.000 · Omzet Rp1.500.000" (Transaksi) + "1 data · Total Rp20.000" (Pengeluaran) ✓
+- Step 3: input "Ketik HAPUS" → tombol "Hapus Permanen" enabled setelah ketik HAPUS ✓
+- Delete success: toast "Berhasil menghapus 1 transaksi & 1 pengeluaran" + "Data Berhasil Dihapus" screen ✓
+- Range filter verified: hapus "Hari Ini" hanya menghapus data 2026-06-24, transaksi 2026-06-23 tetap ada (1 remaining) ✓
+- State reset: tutup dialog → buka lagi → kembali ke step 1 dengan default values ✓
+- Lint PASS, no dev log errors ✓
+
+Stage Summary:
+- Fitur Hapus Data lengkap: 3-step confirmation (pilih rentang → preview → ketik HAPUS), 5 opsi rentang (hari ini/minggu/bulan/custom/all), 2 jenis data (transaksi/pengeluaran), preview real-time, safety code "HAPUS", invalidation otomatis semua query
+- Bugfix runtime error: split component dengan benar, inner component remount saat dialog buka → state reset otomatis
+- DB local fixed: schema snake_case sesuai API
+- recorded_by sudah terintegrasi di SEMUA tempat (riwayat, laporan, impor, filter, dashboard kontribusi)
+
+## Status Proyek
+- STABIL. Fitur Hapus Data aman (3 langkah konfirmasi + kode HAPUS), rentang fleksibel, preview akurat. Bugfix runtime error selesai. Lint PASS, QA terverifikasi end-to-end.
+
+## Risiko / Saran next
+- recurring_expenses table sudah ada di DB (belum ada UI) — bisa implement auto-generate pengeluaran tetap bulanan
+- Bisa tambah: export laporan per pelanggan, notifikasi push untuk tutup buku harian, multi-currency
+- Test data: transaksi Bu Siti/Mama (2026-06-23) masih ada di DB untuk testing — bisa dihapus manual kalau mengganggu

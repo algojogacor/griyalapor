@@ -10,9 +10,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAppStore } from '@/lib/store'
 import { toast } from 'sonner'
-import { Database, Type, Wallet, Tags, Sun, Moon, ShieldCheck } from 'lucide-react'
+import { Database, Type, Wallet, Tags, Sun, Moon, ShieldCheck, Trash2, AlertTriangle } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { BackupRestore } from '@/components/app/BackupRestore'
+import { DeleteDataDialog } from '@/components/app/DeleteDataDialog'
 
 export function SettingsSection() {
   const qc = useQueryClient()
@@ -22,6 +23,7 @@ export function SettingsSection() {
 
   const { theme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true)
@@ -119,6 +121,31 @@ export function SettingsSection() {
 
           {/* Database — Backup & Restore */}
           <BackupRestore />
+
+          {/* Hapus Data — dengan konfirmasi 3 langkah */}
+          <Card className="p-5 border-destructive/30">
+            <h2 className="font-bold text-lg mb-1 flex items-center gap-2 text-destructive">
+              <Trash2 className="w-5 h-5" /> Hapus Data
+            </h2>
+            <p className="text-xs text-muted-foreground mb-3">
+              Hapus transaksi & pengeluaran berdasarkan rentang waktu. <strong>Data yang dihapus tidak bisa dikembalikan</strong> — pastikan sudah backup.
+            </p>
+            <div className="rounded-lg bg-destructive/5 border border-destructive/20 p-3 mb-3">
+              <p className="text-xs text-muted-foreground flex items-start gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 text-destructive shrink-0 mt-0.5" />
+                <span>Pilihan rentang: Hari Ini, Minggu Ini, Bulan Ini, Pilih Tanggal, atau Seluruh Data. Konfirmasi 3 langkah untuk keamanan.</span>
+              </p>
+            </div>
+            <Button
+              onClick={() => setDeleteOpen(true)}
+              variant="outline"
+              className="h-12 w-full border-destructive/40 text-destructive hover:bg-destructive hover:text-white"
+            >
+              <Trash2 className="w-4 h-4" /> Buka Hapus Data
+            </Button>
+          </Card>
+
+          <DeleteDataDialog open={deleteOpen} onOpenChange={setDeleteOpen} />
 
           {/* Info koneksi DB */}
           <Card className="p-4 bg-secondary/30">
