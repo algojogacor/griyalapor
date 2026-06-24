@@ -264,6 +264,11 @@ function TransactionList() {
   const [filterRecorder, setFilterRecorder] = useState<string>('')
   const qc = useQueryClient()
 
+  // Pagination: default limit 200 transaksi per load, "Muat lagi" untuk load lebih
+  const PAGE_SIZE = 200
+  const [loadMoreCount, setLoadMoreCount] = useState(0) // 0 = initial PAGE_SIZE, increment for more
+  const visibleCount = PAGE_SIZE * (loadMoreCount + 1)
+
   const params = new URLSearchParams()
   if (from) params.set('from', from)
   if (to) params.set('to', to)
@@ -273,20 +278,19 @@ function TransactionList() {
     queryKey: ['transactions', from, to],
     queryFn: () => fetch('/api/transactions?' + params.toString()).then((r) => r.json()),
   })
-  const txns: Txn[] = data?.transactions ?? []
+  const txnsAll: Txn[] = data?.transactions ?? []
+  const totalCount: number = data?.total ?? txnsAll.length
 
-  // Filter berdasarkan teks + rentang nominal + recorder (client-side)
+  // Client-side filter (search, amount, recorder)
   const minVal = parseRupiahInput(minAmount) || 0
   const maxVal = parseRupiahInput(maxAmount) || 0
-  const filtered = txns.filter((t) => {
+  const filteredAll = txnsAll.filter((t) => {
     if (search) {
       const hay = (t.category_name + ' ' + (t.customer_name ?? '') + ' ' + (t.note ?? '')).toLowerCase()
       if (!hay.includes(search.toLowerCase())) return false
     }
-    // Amount filter — pakai total (pendapatan bersih) sebagai acuan
     if (minVal > 0 && t.total < minVal) return false
     if (maxVal > 0 && t.total > maxVal) return false
-    // Recorder filter
     if (filterRecorder) {
       if (filterRecorder === '__none__') {
         if (t.recorded_by) return false
@@ -295,10 +299,16 @@ function TransactionList() {
     return true
   })
 
+  // Paginate: hanya tampilkan visibleCount pertama (avoid render 10K+ DOM nodes)
+  const filtered = filteredAll.slice(0, visibleCount)
+  const hasMore = filteredAll.length > visibleCount
+
+  const txns = filtered
+
   const hasAdvancedFilter = minVal > 0 || maxVal > 0
 
-  // Build daftar recorder unik dari transaksi yang tampil
-  const recorders = Array.from(new Set(txns.map((t) => t.recorded_by).filter((x): x is string => !!x)))
+  // Build daftar recorder unik dari SEMUA transaksi (bukan hanya yang tampil) supaya filter chip lengkap
+  const recorders = Array.from(new Set(txnsAll.map((t) => t.recorded_by).filter((x): x is string => !!x)))
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -315,9 +325,10 @@ function TransactionList() {
     onError: () => toast.error('Gagal menghapus transaksi'),
   })
 
-  const grandAdmin = filtered.reduce((s, t) => s + t.total, 0)
-  const grandOmzet = filtered.reduce((s, t) => s + t.total_paid, 0)
-  const hasOmzet = filtered.some((t) => t.total_paid > 0)
+  // Grand totals dari SEMUA transaksi yang ter-filter (bukan hanya yang tampil)
+  const grandAdmin = filteredAll.reduce((s, t) => s + t.total, 0)
+  const grandOmzet = filteredAll.reduce((s, t) => s + t.total_paid, 0)
+  const hasOmzet = filteredAll.some((t) => t.total_paid > 0)
 
   return (
     <Card className="p-5">
@@ -358,7 +369,10 @@ function TransactionList() {
           </button>
         )}
         {(search || from || to || hasAdvancedFilter || filterRecorder) && (
-          <span className="text-xs text-muted-foreground ml-auto">{filtered.length} dari {txns.length} transaksi</span>
+          <span className="text-xs text-muted-foreground ml-auto">
+            {filteredAll.length} dari {txnsAll.length} transaksi
+            {hasMore && ` · menampilkan ${filtered.length}`}
+          </span>
         )}
       </div>
 
@@ -435,7 +449,7 @@ function TransactionList() {
 
       {isLoading ? (
         <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}</div>
-      ) : filtered.length === 0 ? (
+      ) : filteredAll.length === 0 ? (
         <div className="py-12 text-center text-muted-foreground">
           <ReceiptText className="w-10 h-10 mx-auto mb-2 opacity-40" />
           <p>Belum ada transaksi pada rentang ini.</p>
@@ -522,9 +536,24 @@ function TransactionList() {
               })
             })()}
           </div>
+          {/* Muat lagi — pagination button untuk load lebih banyak transaksi */}
+          {hasMore && (
+            <div className="mt-3 flex flex-col items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setLoadMoreCount((c) => c + 1)}
+                className="h-11 px-6"
+              >
+                Muat Lagi ({filteredAll.length - filtered.length} transaksi tersisa)
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Menampilkan {filtered.length} dari {filteredAll.length} transaksi
+              </p>
+            </div>
+          )}
           <div className="mt-3 pt-3 border-t space-y-1">
             <div className="flex items-center justify-between font-semibold">
-              <span>Total Pendapatan Bersih ({filtered.length} transaksi)</span>
+              <span>Total Pendapatan Bersih ({filteredAll.length} transaksi)</span>
               <span className="tabular-nums text-primary text-lg">{formatRupiah(grandAdmin)}</span>
             </div>
             {hasOmzet && (

@@ -4,6 +4,8 @@ import { json, errorJson } from '@/lib/http'
 export const dynamic = 'force-dynamic'
 
 // GET /api/transactions?from=YYYY-MM-DD&to=YYYY-MM-DD&category_id=&limit=&offset=
+// Default: return all transactions matching filter (for backward compat with frontend yang paginate client-side)
+// Jika limit=0 (default), kembalikan semua. Frontend TransactionsSection sudah paginate client-side via visibleCount.
 export async function GET(req: Request) {
   const url = new URL(req.url)
   const from = url.searchParams.get('from')
